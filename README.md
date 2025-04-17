@@ -5,3 +5,5 @@ It's a lisp implementation. Test and build with [che](https://github.com/gasweld
     che test .
     che build lisp.c
     echo '(+ 1 2 3)' | ./lisp
+
+Set the `DEBUG` environment variable to see evaluation traces.

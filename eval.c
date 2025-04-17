@@ -1,4 +1,5 @@
 #import tok.c
+#import os/self
 
 // Represents a single binding.
 pub typedef {
@@ -72,6 +73,7 @@ pub tok.tok_t *evalall(scope_t *s, tok.tok_t **all) {
 }
 
 bool trace = false;
+bool _traceset = false;
 size_t depth = 0;
 
 void trace_defs(scope_t *s) {
@@ -93,6 +95,13 @@ void trace_defs(scope_t *s) {
 
 // Evaluates a node.
 pub tok.tok_t *eval(scope_t *s, tok.tok_t *x) {
+	if (!_traceset) {
+		_traceset = true;
+		const char *v = self.getenv("DEBUG");
+		if (v && strcmp(v, "0")) {
+			trace = true;
+		}
+	}
 	if (x->type == tok.NUMBER) {
 		return x;
 	}
