@@ -118,6 +118,9 @@ case_t cases[] = {
 		"(f 2)",
 		"4"
 	},
+
+	// Can redefine built-ins
+	{"(define (+ a b) (/ a b)) (+ 10 2)", "5"}
 };
 
 int main(int argc, char **argv) {

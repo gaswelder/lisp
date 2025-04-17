@@ -108,6 +108,25 @@ tok.tok_t *eval_list(scope_t *s, tok.tok_t *x) {
 
 // Runs a function.
 tok.tok_t *runfunc(scope_t *s, const char *name, tok.tok_t *args) {
+	// See if there is a defined function with this name.
+	// Custom definitions take precence over the built-ins below.
+	def_t *f = lookup(s, name);
+	if (f) {
+		if (!f->isfunc) {
+			panic("%s is not a function", name);
+		}
+		scope_t *s2 = newscope();
+		s2->parent = s;
+		for (size_t a = 0; a < f->nargs; a++) {
+			pushdef(s2, f->argnames[a], eval(s, args->items[a]));
+		}
+		tok.tok_t *r = NULL;
+		for (size_t i = 0; i < f->nvals; i++) {
+			r = eval(s2, f->vals[i]);
+		}
+		return r;
+	}
+
 	switch str (name) {
 		case "quote": { return car(args); }
 		case "cons": { return cons(args); }
@@ -128,26 +147,7 @@ tok.tok_t *runfunc(scope_t *s, const char *name, tok.tok_t *args) {
 		case "or": { return or(s, args); }
 		case "not": { return not(s, args); }
 	}
-
-	// See if there is a defined function with this name.
-	def_t *f = lookup(s, name);
-	if (!f) {
-		panic("unknown function %s", name);
-	}
-	if (!f->isfunc) {
-		panic("%s is not a function", name);
-	}
-
-	scope_t *s2 = newscope();
-	s2->parent = s;
-	for (size_t a = 0; a < f->nargs; a++) {
-		pushdef(s2, f->argnames[a], eval(s, args->items[a]));
-	}
-	tok.tok_t *r = NULL;
-	for (size_t i = 0; i < f->nvals; i++) {
-		r = eval(s2, f->vals[i]);
-	}
-	return r;
+	panic("unknown function: %s", name);
 }
 
 // (define x const) defines a constant.
