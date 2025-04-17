@@ -1,5 +1,4 @@
 (define (sqrt x)
-    (define (abs x) (if (> x 0) x (- x)))
     (define (square x) (* x x))
     (define (average a b) (/ (+ a b) 2))
     (define (good-enough? guess)

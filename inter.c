@@ -11,6 +11,9 @@ pub t *new() {
     t *r = calloc(1, sizeof(t));
     if (!r) panic("calloc failed");
     r->s = eval.newscope();
+
+    // Define standard functions.
+    evalstr(r, "(define (abs x) (if (> x 0) x (- x)))");
     return r;
 }
 
