@@ -1,0 +1,2 @@
+#!/bin/sh
+che build lisp.c a.out && ./a.out "$@"
