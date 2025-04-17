@@ -109,11 +109,10 @@ case_t cases[] = {
 	},
 
 	// Runs all statements in a function
-	{
-		"(define (f x) x 2) (f 1)",
-		"2",
-	},
+	{"(define (f x) x 2) (f 1)", "2"},
 
+	// Scoped defines
+	{"(define (f x) (define (twice x) (+ x x)) (twice x)) (f 2)", "4"},
 };
 
 tok.tok_t *evalstr(const char *s) {
