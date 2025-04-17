@@ -344,7 +344,8 @@ tok.tok_t *over(scope_t *s, tok.tok_t *args) {
 	tok.tok_t *a = eval(s, car(args));
 	tok.tok_t *b = eval(s, car(cdr(args)));
 	if (a->type != tok.NUMBER || b->type != tok.NUMBER) {
-		panic("not a number");
+		tok.dbgprint(args);
+		panic("/: an argument is not a number");
 	}
 	char buf[100];
 	printnum(buf, atof(a->value) / atof(b->value));

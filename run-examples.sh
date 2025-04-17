@@ -9,4 +9,5 @@ example () {
     fi
 }
 
-example "1-1-7" "1.41421"
+example "1-1-7-sqrt" "1.41421"
+example "1-1-7-curt" "2.1545"
