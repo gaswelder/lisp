@@ -1,21 +1,26 @@
-#import eval.c
 #import tokenizer
 #import read.c
 #import tok.c
+#import inter.c
 
 int main() {
 	char buf[4096];
-	eval.scope_t *s = eval.newscope();
+	inter.t *in = inter.new();
 
 	tokenizer.t *b = tokenizer.stdin();
 	while (true) {
-		tok.tok_t *in = read.read(b);
-		if (!in) break;
+		// Read a form.
+		tok.tok_t *x = read.read(b);
+		if (!x) break;
+
+		// Echo.
 		printf("> ");
-		tok.print(in, buf, 4096);
+		tok.print(x, buf, 4096);
 		puts(buf);
-		tok.tok_t *out = eval.eval(s, in);
-		tok.print(out, buf, 4096);
+
+		// Evaluate and print.
+		tok.tok_t *r = inter.eval(in, x);
+		tok.print(r, buf, 4096);
 		puts(buf);
 	}
 	return 0;

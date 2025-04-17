@@ -1,9 +1,7 @@
-#import eval.c
-#import tokenizer
-#import read.c
+#import inter.c
+#import opt
 #import test
 #import tok.c
-#import opt
 
 typedef {
 	const char *in, *out;
@@ -122,14 +120,6 @@ case_t cases[] = {
 	},
 };
 
-tok.tok_t *evalstr(const char *s) {
-	tokenizer.t *b = tokenizer.from_str(s);
-	tok.tok_t **all = read.readall(b);
-	tokenizer.free(b);
-
-	return eval.evalall(eval.newscope(), all);
-}
-
 int main(int argc, char **argv) {
 	bool last = false;
 	opt.flag("l", "run only the last test", &last);
@@ -143,9 +133,11 @@ int main(int argc, char **argv) {
 		}
 		case_t c = cases[i];
 
-		tok.tok_t *x = evalstr(c.in);
-
+		inter.t *in = inter.new();
+		tok.tok_t *x = inter.evalstr(in, c.in);
 		tok.print(x, buf, 4096);
+		inter.free(in);
+
 		if (!test.streq(buf, c.out)) {
 			puts(c.in);
 		}
