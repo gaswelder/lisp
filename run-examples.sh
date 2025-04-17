@@ -12,3 +12,4 @@ example () {
 example "1-1-7-sqrt" "1.41421"
 example "1-1-7-curt" "2.1545"
 example "1-1-8-scope" "1.73215"
+example "1-1-8-scope-lexical" "1.73215"

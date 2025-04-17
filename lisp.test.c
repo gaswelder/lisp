@@ -113,6 +113,13 @@ case_t cases[] = {
 
 	// Scoped defines
 	{"(define (f x) (define (twice x) (+ x x)) (twice x)) (f 2)", "4"},
+
+	// Lexical scoping
+	{
+		"(define (f x) (define (twice) (+ x x)) (twice))"
+		"(f 2)",
+		"4"
+	},
 };
 
 tok.tok_t *evalstr(const char *s) {
