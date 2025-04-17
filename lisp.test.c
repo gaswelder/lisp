@@ -107,7 +107,7 @@ tok.tok_t *evalstr(const char *s) {
 	tok.tok_t **all = read.readall(b);
 	tokenizer.free(b);
 
-	return eval.evalall(all);
+	return eval.evalall(eval.newscope(), all);
 }
 
 int main(int argc, char **argv) {

@@ -5,6 +5,7 @@
 
 int main() {
 	char buf[4096];
+	eval.scope_t *s = eval.newscope();
 
 	tokenizer.t *b = tokenizer.stdin();
 	while (true) {
@@ -13,7 +14,7 @@ int main() {
 		printf("> ");
 		tok.print(in, buf, 4096);
 		puts(buf);
-		tok.tok_t *out = eval.eval(in);
+		tok.tok_t *out = eval.eval(s, in);
 		tok.print(out, buf, 4096);
 		puts(buf);
 	}
