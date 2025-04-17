@@ -7,12 +7,14 @@ pub typedef {
 	// Name of the function or constant.
 	char name[80];
 
-	// Argument names, if it's a function.
+	// constant:
+	tok.tok_t *val;
+
+	// function:
 	size_t nargs;
 	char argnames[10][10];
-
-	// Constant value or function body.
-	tok.tok_t *val;
+	size_t nvals;
+	tok.tok_t *vals[100];
 } def_t;
 
 // Scope is a list of bindings.
@@ -182,30 +184,40 @@ tok.tok_t *runfunc(scope_t *s, const char *name, tok.tok_t *args) {
 	for (size_t a = 0; a < f->nargs; a++) {
 		pushdef(s2, f->argnames[a], eval(s, args->items[a]));
 	}
-	tok.tok_t *r = eval(s2, f->val);
-	return r;	
+	tok.tok_t *r = NULL;
+	for (size_t i = 0; i < f->nvals; i++) {
+		r = eval(s2, f->vals[i]);
+	}
+	return r;
 }
 
 // (define x const) defines a constant.
 // (define (f x) body) defines a function.
 tok.tok_t *define(scope_t *s, tok.tok_t *args) {
 	tok.tok_t *def = car(args);
-	tok.tok_t *val = car(cdr(args));
+
 	if (def->type == tok.SYMBOL) {
+		tok.tok_t *val = car(cdr(args));
 		pushdef(s, def->name, eval(s, val));
 		return NULL;
 	}
 
-	// (twice x) (* x 2)
+	// (twice x) (print x) (foo) (* x 2)
 	if (def->type == tok.LIST) {
-		tok.tok_t *name = car(def);
 		def_t *d = &s->defs[s->size++];
-		strcpy(d->name, name->name);
+		strcpy(d->name, car(def)->name);
 		d->isfunc = true;
-		d->val = val;
+
+		// Copy arguments
 		for (size_t i = 1; i < def->nitems; i++) {
 			strcpy(d->argnames[d->nargs++], def->items[i]->name);
 		}
+
+		// Copy body expressions
+		for (size_t i = 1; i < args->nitems; i++) {
+			d->vals[d->nvals++] = args->items[i];
+		}
+
 		return NULL;
 	}
 

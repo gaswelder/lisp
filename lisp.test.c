@@ -106,7 +106,13 @@ case_t cases[] = {
 		"(define (next guess x) (avg guess (/ x guess)))"
 		"(next 1 9)",
 		"5"
-	}
+	},
+
+	// Runs all statements in a function
+	{
+		"(define (f x) x 2) (f 1)",
+		"2",
+	},
 
 };
 
