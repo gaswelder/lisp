@@ -98,6 +98,14 @@ case_t cases[] = {
 		"(define (a-plus-abs-b a b) ((if (> b 0) + -) a b))"
 		"(a-plus-abs-b 10 (- 2))",
 		"12"
+	},
+
+	// Correctly handles scoped bindings
+	{
+		"(define (avg x y) (/ (+ x y) 2))"
+		"(define (next guess x) (avg guess (/ x guess)))"
+		"(next 1 9)",
+		"5"
 	}
 
 };

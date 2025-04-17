@@ -24,12 +24,16 @@ pub typedef {
 
 // Finds a binding in the scope.
 def_t *lookup(scope_t *s, const char *name) {
+	def_t *r = NULL;
 	for (size_t i = 0; i < s->size; i++) {
 		if (!strcmp(name, s->defs[i].name)) {
-			return &s->defs[i];
+			r = &s->defs[i];
 		}
 	}
-	return NULL;
+	if (!r && s->parent) {
+		return lookup(s->parent, name);
+	}
+	return r;
 }
 
 pub scope_t *newscope() {
@@ -45,14 +49,14 @@ void pushdef(scope_t *s, const char *name, tok.tok_t *val) {
 	s->size++;
 }
 
-// void printfn(fn_t *f) {
-// 	printf("fn %s(", f->name);
-// 	for (size_t i = 0; i < f->nargs; i++) {
-// 		if (i > 0) printf(" ");
-// 		printf("%s", f->argnames[i]);
-// 	}
-// 	printf(")");
-// }
+void printfn(def_t *f) {
+	printf("fn %s(", f->name);
+	for (size_t i = 0; i < f->nargs; i++) {
+		if (i > 0) printf(" ");
+		printf("%s", f->argnames[i]);
+	}
+	printf(")");
+}
 
 pub tok.tok_t *evalall(scope_t *s, tok.tok_t **all) {
 	tok.tok_t *r = NULL;
@@ -68,9 +72,28 @@ pub tok.tok_t *evalall(scope_t *s, tok.tok_t **all) {
 bool trace = false;
 size_t depth = 0;
 
+void trace_defs(scope_t *s) {
+	for (size_t i = 0; i < s->size; i++) {
+		def_t *d = &s->defs[i];
+		printf("- [%zu] %s = ", i, d->name);
+		if (d->isfunc) {
+			printfn(d);
+			puts("");
+		} else {
+			tok.dbgprint(d->val);
+		}
+	}
+	if (s->parent) {
+		puts("---");
+		trace_defs(s->parent);
+	}
+}
+
 // Evaluates a node.
 pub tok.tok_t *eval(scope_t *s, tok.tok_t *x) {
-	if (x->type == tok.NUMBER) return x;
+	if (x->type == tok.NUMBER) {
+		return x;
+	}
 	if (x->type == tok.SYMBOL) {
 		tok.tok_t *r = eval_symbol(s, x);
 		if (trace) {
@@ -85,6 +108,7 @@ pub tok.tok_t *eval(scope_t *s, tok.tok_t *x) {
 		panic("eval stack overflow (%zu)", depth);
 	}
 	if (trace) {
+		trace_defs(s);
 		for (size_t i = 0; i < depth; i++) printf("  ");
 		printf("eval: ");
 		tok.dbgprint(x);
@@ -153,11 +177,12 @@ tok.tok_t *runfunc(scope_t *s, const char *name, tok.tok_t *args) {
 		panic("%s is not a function", name);
 	}
 
+	scope_t *s2 = newscope();
+	s2->parent = s;
 	for (size_t a = 0; a < f->nargs; a++) {
-		pushdef(s, f->argnames[a], eval(s, args->items[a]));
+		pushdef(s2, f->argnames[a], eval(s, args->items[a]));
 	}
-	tok.tok_t *r = eval(s, f->val);
-	s->size -= f->nargs;
+	tok.tok_t *r = eval(s2, f->val);
 	return r;	
 }
 
