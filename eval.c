@@ -52,15 +52,6 @@ void pushdef(scope_t *s, const char *name, tok.tok_t *val) {
 	s->size++;
 }
 
-void printfn(def_t *f) {
-	printf("fn %s(", f->name);
-	for (size_t i = 0; i < f->nargs; i++) {
-		if (i > 0) printf(" ");
-		printf("%s", f->argnames[i]);
-	}
-	printf(")");
-}
-
 pub tok.tok_t *evalall(scope_t *s, tok.tok_t **all) {
 	tok.tok_t *r = NULL;
 	size_t n = 0;
@@ -72,79 +63,38 @@ pub tok.tok_t *evalall(scope_t *s, tok.tok_t **all) {
 	return r;
 }
 
-bool trace = false;
-bool _traceset = false;
 size_t depth = 0;
-
-void trace_defs(scope_t *s) {
-	for (size_t i = 0; i < s->size; i++) {
-		def_t *d = &s->defs[i];
-		printf("- [%zu] %s = ", i, d->name);
-		if (d->isfunc) {
-			printfn(d);
-			puts("");
-		} else {
-			tok.dbgprint(d->val);
-		}
-	}
-	if (s->parent) {
-		puts("---");
-		trace_defs(s->parent);
-	}
-}
 
 // Evaluates a node.
 pub tok.tok_t *eval(scope_t *s, tok.tok_t *x) {
-	if (!_traceset) {
-		_traceset = true;
-		const char *v = self.getenv("DEBUG");
-		if (v && strcmp(v, "0")) {
-			trace = true;
-		}
-	}
+	trace_init();
+
 	if (x->type == tok.NUMBER) {
 		return x;
 	}
 	if (x->type == tok.SYMBOL) {
-		tok.tok_t *r = eval_symbol(s, x);
-		if (trace) {
-			for (size_t i = 0; i < depth; i++) printf("  ");
-			printf("%s: ", x->name);
-			tok.dbgprint(r);
-		}
+		// Look up the symbol.
+		// If it's defined, use the definition.
+		// If not, keep the symbol as is.
+		tok.tok_t *r = x;
+		def_t *d = lookup(s, x->name);
+		if (d) r = d->val;
+		trace_symbol_eval(x, r);
 		return r;
 	}
-	depth++;
-	if (depth == 100) {
-		panic("eval stack overflow (%zu)", depth);
+	if (x->type == tok.LIST) {
+		depth++;
+		if (depth == 100) {
+			panic("eval stack overflow (%zu)", depth);
+		}
+		trace_list_before(s, x);
+		tok.tok_t *r = NULL;
+		r = eval_list(s, x);
+		trace_list_after(r);
+		depth--;
+		return r;
 	}
-	if (trace) {
-		trace_defs(s);
-		for (size_t i = 0; i < depth; i++) printf("  ");
-		printf("eval: ");
-		tok.dbgprint(x);
-	}
-	tok.tok_t *r = NULL;
-	r = eval_list(s, x);
-	if (trace) {
-		for (size_t i = 0; i < depth; i++) printf("  ");
-		printf("result: ");
-		tok.dbgprint(r);
-	}
-	depth--;
-	return r;
-}
-
-// Looks up a symbol.
-tok.tok_t *eval_symbol(scope_t *s, tok.tok_t *x) {
-	// if (!strcmp(x->name, "true") || !strcmp(x->name, "+") || !strcmp(x->name, "-")) {
-	// 	return x;
-	// }
-	def_t *d = lookup(s, x->name);
-	if (d) {
-		return d->val;
-	}
-	return x;
+	panic("unexpected value type");
 }
 
 // Evaluates a list node.
@@ -457,4 +407,69 @@ tok.tok_t *cdr(tok.tok_t *x) {
 	}
 	r->nitems = x->nitems-1;
 	return r;
+}
+
+bool trace = false;
+bool _traceset = false;
+
+void printfn(def_t *f) {
+	printf("fn %s(", f->name);
+	for (size_t i = 0; i < f->nargs; i++) {
+		if (i > 0) printf(" ");
+		printf("%s", f->argnames[i]);
+	}
+	printf(")");
+}
+
+void trace_defs(scope_t *s) {
+	for (size_t i = 0; i < s->size; i++) {
+		def_t *d = &s->defs[i];
+		printf("- [%zu] %s = ", i, d->name);
+		if (d->isfunc) {
+			printfn(d);
+			puts("");
+		} else {
+			tok.dbgprint(d->val);
+		}
+	}
+	if (s->parent) {
+		puts("---");
+		trace_defs(s->parent);
+	}
+}
+
+void trace_init() {
+	if (!_traceset) {
+		_traceset = true;
+		const char *v = self.getenv("DEBUG");
+		if (v && strcmp(v, "0")) {
+			trace = true;
+		}
+	}
+}
+
+void trace_indent() {
+	for (size_t i = 0; i < depth; i++) printf("  ");
+}
+
+void trace_symbol_eval(tok.tok_t *x, *r) {
+	if (!trace) return;
+	trace_indent();
+	printf("%s: ", x->name);
+	tok.dbgprint(r);
+}
+
+void trace_list_before(scope_t *s, tok.tok_t *x) {
+	if (!trace) return;
+	trace_defs(s);
+	trace_indent();
+	printf("eval: ");
+	tok.dbgprint(x);
+}
+
+void trace_list_after(tok.tok_t *r) {
+	if (!trace) return;
+	trace_indent();
+	printf("result: ");
+	tok.dbgprint(r);
 }
