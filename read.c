@@ -43,6 +43,9 @@ tok.tok_t *readsymbol(tokenizer.t *b) {
 	while (tokenizer.more(b) && !isspace(tokenizer.peek(b)) && tokenizer.peek(b) != ')') {
 		t->name[pos++] = tokenizer.get(b);
 	}
+	if (pos == 0) {
+		panic("failed to read symbol at %s", tokenizer.posstr(b));
+	}
 	return t;
 }
 
