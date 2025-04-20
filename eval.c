@@ -99,10 +99,20 @@ pub tok.tok_t *eval(scope_t *s, tok.tok_t *x) {
 
 // Evaluates a list node.
 tok.tok_t *eval_list(scope_t *s, tok.tok_t *x) {
+	// The first item could be anything, we might need to evaluate it
+	// to find out which function to run.
 	tok.tok_t *first = car(x);
-	if (first->type != tok.SYMBOL) {
+	if (first->type == tok.LIST) {
 		first = eval(s, first);
 	}
+
+	// At this point we should have a symbol.
+	if (first->type != tok.SYMBOL) {
+		char buf[100];
+		tok.print(first, buf, 100);
+		panic("invalid function invocation: got %s as function", buf);
+	}
+
 	return runfunc(s, first->name, cdr(x));
 }
 
