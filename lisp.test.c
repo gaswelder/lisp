@@ -83,6 +83,11 @@ case_t cases[] = {
 		"(define (abs1 x) (if (< x 0) (- x) x)) (abs1 (- 123))",
 		"123",
 	},
+	{
+		"(define (f x) (if (> x 1) ok notok))"
+		"(f 2)",
+		"ok"
+	},
 
 	// Examples
 	{"(apply cons (quote (a (b c))))", "(a b c)"},

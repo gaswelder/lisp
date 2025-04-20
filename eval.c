@@ -116,25 +116,83 @@ tok.tok_t *eval_list(scope_t *s, tok.tok_t *x) {
 	return runfunc(s, first->name, cdr(x));
 }
 
+int compile_if(tok.tok_t *x, tok.tok_t *body[]) {
+	int added = 0;
+
+	// Tests the condition and skips the ok branch if false.
+	tok.tok_t *tst = tok.newlist();
+	tst->items[tst->nitems++] = tok.newsym("__test_and_jump_if_false");
+	tst->items[tst->nitems++] = x->items[1];
+	body[added++] = tst;
+
+	// The ok branch with an end marker.
+	body[added++] = x->items[2];
+	body[added++] = tok.newsym("__end");
+
+	// The else branch.
+	body[added++] = x->items[3];
+
+	return added;
+}
+
+bool islist(tok.tok_t *x, const char *name) {
+	return x->type == tok.LIST
+		&& x->items[0]->type == tok.SYMBOL
+		&& !strcmp(x->items[0]->name, name);
+}
+
+tok.tok_t *runcustomfunc(scope_t *s, def_t *f, tok.tok_t *args) {
+	if (!f->isfunc) {
+		panic("%s is not a function", f->name);
+	}
+
+	// Create a new scope for the call.
+	scope_t *s2 = newscope();
+	s2->parent = s;
+	for (size_t a = 0; a < f->nargs; a++) {
+		pushdef(s2, f->argnames[a], eval(s, args->items[a]));
+	}
+
+	tok.tok_t *body[100] = {};
+	int added = 0;
+	for (size_t i = 0; i < f->nvals; i++) {
+		tok.tok_t *x = f->vals[i];
+
+		// If this is the last entry in the function's body and it's an if
+		// statement, flatten it so we can attempt a tail recursion.
+		if (i == f->nvals - 1 && islist(x, "if")) {
+			added += compile_if(x, body);
+			continue;
+		}
+		body[added++] = x;
+	}
+
+
+	tok.tok_t *r = NULL;
+	for (int i = 0; i < 100; i++) {
+		tok.tok_t *x = body[i];
+		if (!x) break;
+		if (x->type == tok.SYMBOL && !strcmp(x->name, "__end")) {
+			break;
+		}
+		if (islist(x, "__test_and_jump_if_false")) {
+			if (!eval(s2, x->items[1])) {
+				i += 2; // ok expression + end
+			}
+			continue;
+		}
+		r = eval(s2, x);
+	}
+	return r;
+}
+
 // Runs a function.
 tok.tok_t *runfunc(scope_t *s, const char *name, tok.tok_t *args) {
 	// See if there is a defined function with this name.
-	// Custom definitions take precence over the built-ins below.
+	// Custom definitions take precedence over the built-ins below.
 	def_t *f = lookup(s, name);
 	if (f) {
-		if (!f->isfunc) {
-			panic("%s is not a function", name);
-		}
-		scope_t *s2 = newscope();
-		s2->parent = s;
-		for (size_t a = 0; a < f->nargs; a++) {
-			pushdef(s2, f->argnames[a], eval(s, args->items[a]));
-		}
-		tok.tok_t *r = NULL;
-		for (size_t i = 0; i < f->nvals; i++) {
-			r = eval(s2, f->vals[i]);
-		}
-		return r;
+		return runcustomfunc(s, f, args);
 	}
 
 	switch str (name) {
