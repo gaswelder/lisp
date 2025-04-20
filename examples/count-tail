@@ -1,0 +1,9 @@
+(define (inc x) (+ 1 x))
+(define (dec x) (- x 1))
+
+(define (count x n)
+    (if (= n 0)
+        x
+        (count (inc x) (dec n))))
+
+(count 0 1000)

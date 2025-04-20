@@ -25,6 +25,13 @@ pub typedef {
 	def_t defs[100];
 } scope_t;
 
+pub scope_t *newscope(scope_t *parent) {
+	scope_t *s = calloc(1, sizeof(scope_t));
+	if (!s) panic("calloc failed");
+	s->parent = parent;
+	return s;
+}
+
 // Finds a binding in the scope.
 def_t *lookup(scope_t *s, const char *name) {
 	def_t *r = NULL;
@@ -39,11 +46,7 @@ def_t *lookup(scope_t *s, const char *name) {
 	return r;
 }
 
-pub scope_t *newscope() {
-	scope_t *s = calloc(1, sizeof(scope_t));
-	if (!s) panic("calloc failed");
-	return s;
-}
+
 
 // Adds a binding to the scope.
 void pushdef(scope_t *s, const char *name, tok.tok_t *val) {
@@ -146,26 +149,26 @@ tok.tok_t *runcustomfunc(scope_t *s, def_t *f, tok.tok_t *args) {
 		panic("%s is not a function", f->name);
 	}
 
-	// Create a new scope for the call.
-	scope_t *s2 = newscope();
-	s2->parent = s;
-	for (size_t a = 0; a < f->nargs; a++) {
-		pushdef(s2, f->argnames[a], eval(s, args->items[a]));
-	}
-
+	// Reformat the function body to have a better handle on execution.
 	tok.tok_t *body[100] = {};
 	int added = 0;
 	for (size_t i = 0; i < f->nvals; i++) {
 		tok.tok_t *x = f->vals[i];
-
-		// If this is the last entry in the function's body and it's an if
-		// statement, flatten it so we can attempt a tail recursion.
+		// Flatten ifs at the end so we can attempt a tail recursion.
 		if (i == f->nvals - 1 && islist(x, "if")) {
 			added += compile_if(x, body);
 			continue;
 		}
 		body[added++] = x;
 	}
+
+	// Create a new scope for the call.
+	scope_t *s2 = newscope(s);
+	for (size_t a = 0; a < f->nargs; a++) {
+		pushdef(s2, f->argnames[a], eval(s, args->items[a]));
+	}
+
+
 
 
 	tok.tok_t *r = NULL;
@@ -181,6 +184,21 @@ tok.tok_t *runcustomfunc(scope_t *s, def_t *f, tok.tok_t *args) {
 			}
 			continue;
 		}
+
+		if (islist(x, f->name)) {
+			// Replace the current call scope with a new scope
+			// that an honest call would produce.
+			scope_t *s3 = newscope(s);
+			for (size_t a = 0; a < f->nargs; a++) {
+				pushdef(s3, f->argnames[a], eval(s2, x->items[1+a]));
+			}
+			s2 = s3;
+			// Loop back to the beginning.
+			r = NULL;
+			i = -1;
+			continue;
+		}
+
 		r = eval(s2, x);
 	}
 	return r;
