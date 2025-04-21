@@ -138,6 +138,27 @@ int compile_if(tok.tok_t *x, tok.tok_t *body[]) {
 	return added;
 }
 
+int compile_cond(tok.tok_t *cond, tok.tok_t *body[]) {
+	int added = 0;
+
+	for (size_t i = 1; i < cond->nitems; i++) {
+		tok.tok_t *alt = cond->items[i];
+
+		// Tests the condtion and skips the ok expression if false.
+		// Implies that cond values have exactly one expression.
+		tok.tok_t *tst = tok.newlist();
+		tst->items[tst->nitems++] = tok.newsym("__test_and_jump_if_false");
+		tst->items[tst->nitems++] = alt->items[0];
+		body[added++] = tst;
+
+		// Value followed by the stop command
+		// (implies that this cond is the last expression)
+		body[added++] = alt->items[1];
+		body[added++] = tok.newsym("__end");
+	}
+	return added;
+}
+
 bool islist(tok.tok_t *x, const char *name) {
 	return x->type == tok.LIST
 		&& x->items[0]->type == tok.SYMBOL
@@ -159,6 +180,10 @@ tok.tok_t *runcustomfunc(scope_t *s, def_t *f, tok.tok_t *args) {
 			added += compile_if(x, body);
 			continue;
 		}
+		if (i == f->nvals - 1 && islist(x, "cond")) {
+			added += compile_cond(x, body);
+			continue;
+		}
 		body[added++] = x;
 	}
 
@@ -167,9 +192,6 @@ tok.tok_t *runcustomfunc(scope_t *s, def_t *f, tok.tok_t *args) {
 	for (size_t a = 0; a < f->nargs; a++) {
 		pushdef(s2, f->argnames[a], eval(s, args->items[a]));
 	}
-
-
-
 
 	tok.tok_t *r = NULL;
 	for (int i = 0; i < 100; i++) {
