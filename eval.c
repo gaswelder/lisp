@@ -87,7 +87,7 @@ pub tok.tok_t *eval(scope_t *s, tok.tok_t *x) {
 	}
 	if (x->type == tok.LIST) {
 		depth++;
-		if (depth == 100) {
+		if (depth == 400) {
 			panic("eval stack overflow (%zu)", depth);
 		}
 		trace_list_before(s, x);
