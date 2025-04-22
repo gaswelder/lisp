@@ -211,12 +211,6 @@ int compile_cond(tok.tok_t *cond, tok.tok_t *body[]) {
 	return added;
 }
 
-bool islist(tok.tok_t *x, const char *name) {
-	return x->type == tok.LIST
-		&& x->items[0]->type == tok.SYMBOL
-		&& !strcmp(x->items[0]->name, name);
-}
-
 tok.tok_t *runcustomfunc(t *inter, def_t *f, tok.tok_t *args) {
 	if (!f->isfunc) {
 		panic("%s is not a function", f->name);
@@ -228,11 +222,11 @@ tok.tok_t *runcustomfunc(t *inter, def_t *f, tok.tok_t *args) {
 	for (size_t i = 0; i < f->nvals; i++) {
 		tok.tok_t *x = f->vals[i];
 		// Flatten ifs at the end so we can attempt a tail recursion.
-		if (i == f->nvals - 1 && islist(x, "if")) {
+		if (i == f->nvals - 1 && tok.islist(x, "if")) {
 			added += compile_if(x, body);
 			continue;
 		}
-		if (i == f->nvals - 1 && islist(x, "cond")) {
+		if (i == f->nvals - 1 && tok.islist(x, "cond")) {
 			added += compile_cond(x, body);
 			continue;
 		}
@@ -253,14 +247,14 @@ tok.tok_t *runcustomfunc(t *inter, def_t *f, tok.tok_t *args) {
 		if (x->type == tok.SYMBOL && !strcmp(x->name, "__end")) {
 			break;
 		}
-		if (islist(x, "__test_and_jump_if_false")) {
+		if (tok.islist(x, "__test_and_jump_if_false")) {
 			if (!eval(inter, x->items[1])) {
 				i += 2; // ok expression + end
 			}
 			continue;
 		}
 
-		if (islist(x, f->name)) {
+		if (tok.islist(x, f->name)) {
             // Build a new scope such that an honest call would produce.
 			scope_t *s3 = newscope();
 			for (size_t a = 0; a < f->nargs; a++) {

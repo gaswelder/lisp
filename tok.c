@@ -30,6 +30,12 @@ pub typedef {
 	size_t nitems;
 } tok_t;
 
+pub bool islist(tok_t *x, const char *name) {
+	return x->type == LIST
+		&& x->items[0]->type == SYMBOL
+		&& !strcmp(x->items[0]->name, name);
+}
+
 pub tok_t *newnumber(const char *val) {
 	tok_t *t = calloc(1, sizeof(tok_t));
 	t->type = NUMBER;

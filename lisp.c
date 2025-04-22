@@ -20,8 +20,10 @@ int main() {
 
 		// Evaluate and print.
 		tok.tok_t *r = inter.eval(in, x);
-		tok.print(r, buf, 4096);
-		puts(buf);
+		if (!tok.islist(x, "define")) {
+			tok.print(r, buf, 4096);
+			puts(buf);
+		}
 	}
 	return 0;
 }
