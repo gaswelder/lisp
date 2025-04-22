@@ -5,9 +5,9 @@
 
 // An instance of the interpreter, with all its internal state.
 pub typedef {
-    scope_t *stack[400];
-    size_t depth;
-    bool trace;
+	scope_t *stack[400];
+	size_t depth;
+	bool trace;
 } t;
 
 // Represents a single binding.
@@ -35,25 +35,25 @@ pub typedef {
 
 // Creates a new instance of the interpreter.
 pub t *new() {
-    t *r = calloc(1, sizeof(t));
-    if (!r) panic("calloc failed");
-    r->stack[r->depth++] = newscope();
+	t *r = calloc(1, sizeof(t));
+	if (!r) panic("calloc failed");
+	r->stack[r->depth++] = newscope();
 
-    // Define standard functions.
-    evalstr(r, "(define (abs x) (if (> x 0) x (- x)))");
+	// Define standard functions.
+	evalstr(r, "(define (abs x) (if (> x 0) x (- x)))");
 
-    // Enable tracing output if requested.
-    const char *v = self.getenv("DEBUG");
-    if (v && strcmp(v, "0")) {
-        r->trace = true;
-    }
-    return r;
+	// Enable tracing output if requested.
+	const char *v = self.getenv("DEBUG");
+	if (v && strcmp(v, "0")) {
+		r->trace = true;
+	}
+	return r;
 }
 
 // Frees an instance of the interpreter.
 pub void free(t *r) {
-    // Ignore all the rest for now.
-    OS.free(r);
+	// Ignore all the rest for now.
+	OS.free(r);
 }
 
 // Creates a new instance of scope.
@@ -72,24 +72,24 @@ void pushdef(scope_t *s, const char *name, tok.tok_t *val) {
 
 // Finds a binding.
 def_t *lookup(t *inter, const char *name) {
-    for (size_t d = 0; d < inter->depth; d++) {
-        scope_t *s = inter->stack[inter->depth - 1 - d];
-        def_t *r = NULL;
-        for (size_t i = 0; i < s->size; i++) {
-            if (!strcmp(name, s->defs[i].name)) {
-                r = &s->defs[i];
-            }
-        }
-        if (r) {
-            return r;
-        }
-    }
+	for (size_t d = 0; d < inter->depth; d++) {
+		scope_t *s = inter->stack[inter->depth - 1 - d];
+		def_t *r = NULL;
+		for (size_t i = 0; i < s->size; i++) {
+			if (!strcmp(name, s->defs[i].name)) {
+				r = &s->defs[i];
+			}
+		}
+		if (r) {
+			return r;
+		}
+	}
 	return NULL;
 }
 
 // Parses a string into expressions and evaluates them.
 pub tok.tok_t *evalstr(t *inter, const char *s) {
-    tokenizer.t *b = tokenizer.from_str(s);
+	tokenizer.t *b = tokenizer.from_str(s);
 	tok.tok_t **all = read.readall(b);
 	tokenizer.free(b);
 
@@ -148,10 +148,10 @@ tok.tok_t *eval_list(t *inter, tok.tok_t *x) {
 tok.tok_t *runfunc(t *inter, const char *name, tok.tok_t *args) {
 	// See if there is a defined function with this name.
 	// Custom definitions take precedence over the built-ins below.
-    if (inter->trace) {
-        trace_indent(inter->depth);
-        printf("RUN_FUNC: %s\n", name);
-    }
+	if (inter->trace) {
+		trace_indent(inter->depth);
+		printf("RUN_FUNC: %s\n", name);
+	}
 	def_t *f = lookup(inter, name);
 	if (f) {
 		return runcustomfunc(inter, f, args);
@@ -247,7 +247,7 @@ tok.tok_t *runcustomfunc(t *inter, def_t *f, tok.tok_t *args) {
 	for (size_t a = 0; a < f->nargs; a++) {
 		pushdef(s2, f->argnames[a], eval(inter, args->items[a]));
 	}
-    inter->stack[inter->depth++] = s2;
+	inter->stack[inter->depth++] = s2;
 
 	tok.tok_t *r = NULL;
 	for (int i = 0; i < 100; i++) {
@@ -264,27 +264,27 @@ tok.tok_t *runcustomfunc(t *inter, def_t *f, tok.tok_t *args) {
 		}
 
 		if (tok.islist(x, f->name)) {
-            // Build a new scope such that an honest call would produce.
+			// Build a new scope such that an honest call would produce.
 			scope_t *s3 = newscope();
 			for (size_t a = 0; a < f->nargs; a++) {
 				pushdef(s3, f->argnames[a], eval(inter, x->items[1+a]));
 			}
 
-            // Replace the scope and loop back to the beginning.
-            inter->stack[inter->depth-1] = s3;
+			// Replace the scope and loop back to the beginning.
+			inter->stack[inter->depth-1] = s3;
 			r = NULL;
 			i = -1;
-            if (inter->trace) {
-                trace_indent(inter->depth);
-                printf("TAIL_RECUR: %s\n", f->name);
-            }
+			if (inter->trace) {
+				trace_indent(inter->depth);
+				printf("TAIL_RECUR: %s\n", f->name);
+			}
 			continue;
 		}
 
 		r = eval(inter, x);
 	}
 
-    inter->depth--;
+	inter->depth--;
 	return r;
 }
 
@@ -293,17 +293,17 @@ tok.tok_t *runcustomfunc(t *inter, def_t *f, tok.tok_t *args) {
 tok.tok_t *define(t *inter, tok.tok_t *args) {
 	tok.tok_t *def = car(args);
 
-    // (define x const)
+	// (define x const)
 	if (def->type == tok.SYMBOL) {
 		tok.tok_t *val = car(cdr(args));
-        scope_t *s = inter->stack[inter->depth-1];
+		scope_t *s = inter->stack[inter->depth-1];
 		pushdef(s, def->name, eval(inter, val));
 		return NULL;
 	}
 
 	// (define (twice x) (print x) (foo) (* x 2))
 	if (def->type == tok.LIST) {
-        scope_t *s = inter->stack[inter->depth-1];
+		scope_t *s = inter->stack[inter->depth-1];
 		def_t *d = &s->defs[s->size++];
 		strcpy(d->name, car(def)->name);
 		d->isfunc = true;
@@ -581,20 +581,20 @@ void trace_list_before(t *inter, tok.tok_t *x) {
 }
 
 void trace_defs(t *inter) {
-    for (size_t d = 0; d < inter->depth; d++) {
-        scope_t *s = inter->stack[inter->depth - d - 1];
-        for (size_t i = 0; i < s->size; i++) {
-            def_t *d = &s->defs[i];
-            printf("- [%zu] %s = ", i, d->name);
-            if (d->isfunc) {
-                printfn(d);
-                puts("");
-            } else {
-                tok.dbgprint(d->val);
-            }
-        }
-        puts("---");
-    }
+	for (size_t d = 0; d < inter->depth; d++) {
+		scope_t *s = inter->stack[inter->depth - d - 1];
+		for (size_t i = 0; i < s->size; i++) {
+			def_t *d = &s->defs[i];
+			printf("- [%zu] %s = ", i, d->name);
+			if (d->isfunc) {
+				printfn(d);
+				puts("");
+			} else {
+				tok.dbgprint(d->val);
+			}
+		}
+		puts("---");
+	}
 }
 
 void trace_list_after(t *inter, tok.tok_t *r) {
