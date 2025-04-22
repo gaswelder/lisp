@@ -1,0 +1,27 @@
+(define (inc x) (+ 1 x))
+(define (dec x) (- x 1))
+
+(define (floor-iter x n)
+    (if (> (inc n) x) n (floor-iter x (inc n))))
+
+(define (floor x)
+    (if (> x 0)
+        (floor-iter x 0)
+        (- (inc (floor (- x))))))
+
+(define (ceil x) (+ 1 (floor x)))
+
+(define (remainder x n)
+    (- (/ x n) (floor (/ x n))))
+
+(define (even? n)
+    (= (remainder n 2) 0))
+
+(define (square x) (* x x))
+
+(define (fast-expt b n)
+    (cond   ((= n 0) 1)
+            ((even? n) (square (fast-expt b (/ n 2))))
+            (else (* b (fast-expt b (- n 1))))))
+
+(fast-expt 2 11)
