@@ -7,6 +7,7 @@
 pub typedef {
     scope_t *stack[400];
     size_t depth;
+    bool trace;
 } t;
 
 // Represents a single binding.
@@ -40,6 +41,12 @@ pub t *new() {
 
     // Define standard functions.
     evalstr(r, "(define (abs x) (if (> x 0) x (- x)))");
+
+    // Enable tracing output if requested.
+    const char *v = self.getenv("DEBUG");
+    if (v && strcmp(v, "0")) {
+        r->trace = true;
+    }
     return r;
 }
 
@@ -98,8 +105,6 @@ pub tok.tok_t *evalstr(t *inter, const char *s) {
 
 // Evaluates a node.
 pub tok.tok_t *eval(t *inter, tok.tok_t *x) {
-    trace_init();
-
 	if (x->type == tok.NUMBER) {
 		return x;
 	}
@@ -110,7 +115,7 @@ pub tok.tok_t *eval(t *inter, tok.tok_t *x) {
 		tok.tok_t *r = x;
 		def_t *d = lookup(inter, x->name);
 		if (d) r = d->val;
-		trace_symbol_eval(inter->depth, x, r);
+		trace_symbol_eval(inter, x, r);
 		return r;
 	}
 	if (x->type == tok.LIST) {
@@ -143,6 +148,10 @@ tok.tok_t *eval_list(t *inter, tok.tok_t *x) {
 tok.tok_t *runfunc(t *inter, const char *name, tok.tok_t *args) {
 	// See if there is a defined function with this name.
 	// Custom definitions take precedence over the built-ins below.
+    if (inter->trace) {
+        trace_indent(inter->depth);
+        printf("RUN_FUNC: %s\n", name);
+    }
 	def_t *f = lookup(inter, name);
 	if (f) {
 		return runcustomfunc(inter, f, args);
@@ -265,6 +274,10 @@ tok.tok_t *runcustomfunc(t *inter, def_t *f, tok.tok_t *args) {
             inter->stack[inter->depth-1] = s3;
 			r = NULL;
 			i = -1;
+            if (inter->trace) {
+                trace_indent(inter->depth);
+                printf("TAIL_RECUR: %s\n", f->name);
+            }
 			continue;
 		}
 
@@ -537,9 +550,6 @@ tok.tok_t *cdr(tok.tok_t *x) {
 	return r;
 }
 
-bool trace = false;
-bool _traceset = false;
-
 void printfn(def_t *f) {
 	printf("fn %s(", f->name);
 	for (size_t i = 0; i < f->nargs; i++) {
@@ -551,29 +561,19 @@ void printfn(def_t *f) {
 
 
 
-void trace_init() {
-	if (!_traceset) {
-		_traceset = true;
-		const char *v = self.getenv("DEBUG");
-		if (v && strcmp(v, "0")) {
-			trace = true;
-		}
-	}
-}
-
 void trace_indent(size_t depth) {
 	for (size_t i = 0; i < depth; i++) printf("  ");
 }
 
-void trace_symbol_eval(size_t depth, tok.tok_t *x, *r) {
-	if (!trace) return;
-	trace_indent(depth);
-	printf("%s: ", x->name);
+void trace_symbol_eval(t *inter, tok.tok_t *x, *r) {
+	if (!inter->trace) return;
+	trace_indent(inter->depth);
+	printf("EVAL_SYM %s: ", x->name);
 	tok.dbgprint(r);
 }
 
 void trace_list_before(t *inter, tok.tok_t *x) {
-	if (!trace) return;
+	if (!inter->trace) return;
 	trace_defs(inter);
 	trace_indent(inter->depth);
 	printf("eval: ");
@@ -598,7 +598,7 @@ void trace_defs(t *inter) {
 }
 
 void trace_list_after(t *inter, tok.tok_t *r) {
-	if (!trace) return;
+	if (!inter->trace) return;
 	trace_indent(inter->depth);
 	printf("result: ");
 	tok.dbgprint(r);
