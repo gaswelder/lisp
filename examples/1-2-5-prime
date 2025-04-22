@@ -1,0 +1,30 @@
+(define (inc x) (+ 1 x))
+
+(define (floor-iter x n)
+    (if (> (inc n) x) n (floor-iter x (inc n))))
+
+(define (floor x)
+    (if (> x 0)
+        (floor-iter x 0)
+        (- (inc (floor (- x))))))
+
+(define (remainder x n)
+    (- x (* n (floor (/ x n)))))
+
+(define (divides? a b)
+    (= (remainder b a) 0))
+
+(define (smallest-divisor n)
+    (find-divisor n 2))
+
+(define (square x) (* x x))
+
+(define (find-divisor n test-divisor)
+    (cond ((> (square test-divisor) n) n)
+    ((divides? test-divisor n) test-divisor)
+    (else (find-divisor n (+ test-divisor 1)))))
+
+(define (prime? n)
+    (= n (smallest-divisor n)))
+
+(prime? 541)
