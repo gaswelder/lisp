@@ -12,7 +12,7 @@
 (define (ceil x) (+ 1 (floor x)))
 
 (define (remainder x n)
-    (- (/ x n) (floor (/ x n))))
+    (- x (* n (floor (/ x n)))))
 
 (define (even? n)
     (= (remainder n 2) 0))
