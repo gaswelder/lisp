@@ -7,6 +7,7 @@ example () {
         echo $1: wanted $2, got $n
         exit 1
     fi
+    echo "ok $1"
 }
 
 example "1-1-7-sqrt" "1.41421"
