@@ -1,16 +1,3 @@
-(define (inc x) (+ 1 x))
-
-(define (floor-iter x n)
-    (if (> (inc n) x) n (floor-iter x (inc n))))
-
-(define (floor x)
-    (if (> x 0)
-        (floor-iter x 0)
-        (- (inc (floor (- x))))))
-
-(define (remainder x n)
-    (- x (* n (floor (/ x n)))))
-
 (define (gcd a b)
     (if (= b 0)
         a

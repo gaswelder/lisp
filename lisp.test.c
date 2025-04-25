@@ -125,7 +125,20 @@ case_t cases[] = {
 	},
 
 	// Can redefine built-ins
-	{"(define (+ a b) (/ a b)) (+ 10 2)", "5"}
+	{"(define (+ a b) (/ a b)) (+ 10 2)", "5"},
+
+	// Built-ins
+	{"(even? 2)", "true"},
+	{"(even? 1)", "NULL"},
+	{"(inc 1)", "2"},
+	{"(dec 1)", "0"},
+	{"(floor 1.2)", "1"},
+	{"(floor (- 1.2))", "-2"},
+	{"(ceil 1.2)", "2"},
+	{"(ceil (- 1.2))", "-1"},
+	{"(square 1.1)", "1.21"},
+	{"(remainder 10 3)", "1"},
+	{"(abs (- 10))", "10"},
 };
 
 int main(int argc, char **argv) {

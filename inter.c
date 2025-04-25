@@ -40,7 +40,28 @@ pub t *new() {
 	r->stack[r->depth++] = newscope();
 
 	// Define standard functions.
-	evalstr(r, "(define (abs x) (if (> x 0) x (- x)))");
+	evalstr(r, "
+(define (inc x) (+ 1 x))
+(define (dec x) (- x 1))
+
+(define (floor-iter x n)
+    (if (> (inc n) x) n (floor-iter x (inc n))))
+
+(define (floor x)
+    (if (> x 0)
+        (floor-iter x 0)
+        (- (inc (floor (- x))))))
+
+(define (ceil x) (+ 1 (floor x)))
+
+(define (square x) (* x x))
+
+(define (abs x) (if (> x 0) x (- x)))
+
+(define (remainder x n) (- x (* n (floor (/ x n)))))
+
+(define (even? n) (= (remainder n 2) 0))
+");
 
 	// Enable tracing output if requested.
 	const char *v = self.getenv("DEBUG");
