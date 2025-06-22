@@ -26,12 +26,12 @@ pub typedef {
 	char argnames[10][10];
 	size_t nvals;
 	tok.tok_t *vals[100];
-} def_t;
+} binding_t;
 
 // Scope is a list of bindings, a call stack frame.
 pub typedef {
 	size_t size;
-	def_t defs[100];
+	binding_t defs[100];
 } scope_t;
 
 // Creates a new instance of the interpreter.
@@ -96,8 +96,8 @@ void pushdef(scope_t *s, const char *name, tok.tok_t *val) {
 	s->size++;
 }
 
-def_t *getdef(scope_t *s, const char *name) {
-	def_t *r = NULL;
+binding_t *getdef(scope_t *s, const char *name) {
+	binding_t *r = NULL;
 	for (size_t i = 0; i < s->size; i++) {
 		if (!strcmp(name, s->defs[i].name)) {
 			// Don't break because currently redefinitions are just
@@ -109,10 +109,10 @@ def_t *getdef(scope_t *s, const char *name) {
 }
 
 // Finds a binding.
-def_t *lookup(t *inter, const char *name) {
+binding_t *lookup(t *inter, const char *name) {
 	for (size_t d = 0; d < inter->depth; d++) {
 		scope_t *s = inter->stack[inter->depth - 1 - d];
-		def_t *r = getdef(s, name);
+		binding_t *r = getdef(s, name);
 		if (r) {
 			return r;
 		}
@@ -146,7 +146,7 @@ pub tok.tok_t *eval(t *inter, tok.tok_t *x) {
 		// If it's defined, use the definition.
 		// If not, keep the symbol as is.
 		tok.tok_t *r = x;
-		def_t *d = lookup(inter, x->name);
+		binding_t *d = lookup(inter, x->name);
 		if (d) r = d->val;
 		trace_symbol_eval(inter, x, r);
 		return r;
@@ -185,7 +185,7 @@ tok.tok_t *runfunc(t *inter, const char *name, tok.tok_t *args) {
 		trace_indent(inter->depth);
 		printf("RUN_FUNC: %s\n", name);
 	}
-	def_t *f = lookup(inter, name);
+	binding_t *f = lookup(inter, name);
 	if (f) {
 		return runcustomfunc(inter, f, args);
 	}
@@ -224,7 +224,7 @@ tok.tok_t *globalset(t *inter, tok.tok_t *args) {
 
 tok.tok_t *globalget(t *inter, tok.tok_t *args) {
 	tok.tok_t *name = args->items[0];
-	def_t *d = getdef(inter->globals, name->name);
+	binding_t *d = getdef(inter->globals, name->name);
 	if (d) {
 		return d->val;
 	}
@@ -271,7 +271,7 @@ int compile_cond(tok.tok_t *cond, tok.tok_t *body[]) {
 	return added;
 }
 
-tok.tok_t *runcustomfunc(t *inter, def_t *f, tok.tok_t *args) {
+tok.tok_t *runcustomfunc(t *inter, binding_t *f, tok.tok_t *args) {
 	if (!f->isfunc) {
 		panic("%s is not a function", f->name);
 	}
@@ -355,7 +355,7 @@ tok.tok_t *define(t *inter, tok.tok_t *args) {
 	// (define (twice x) (print x) (foo) (* x 2))
 	if (def->type == tok.LIST) {
 		scope_t *s = inter->stack[inter->depth-1];
-		def_t *d = &s->defs[s->size++];
+		binding_t *d = &s->defs[s->size++];
 		strcpy(d->name, car(def)->name);
 		d->isfunc = true;
 
@@ -601,7 +601,7 @@ tok.tok_t *cdr(tok.tok_t *x) {
 	return r;
 }
 
-void printfn(def_t *f) {
+void printfn(binding_t *f) {
 	printf("fn %s(", f->name);
 	for (size_t i = 0; i < f->nargs; i++) {
 		if (i > 0) printf(" ");
@@ -636,7 +636,7 @@ void trace_defs(t *inter) {
 	for (size_t d = 0; d < inter->depth - 1; d++) {
 		scope_t *s = inter->stack[inter->depth - d - 1];
 		for (size_t i = 0; i < s->size; i++) {
-			def_t *d = &s->defs[i];
+			binding_t *d = &s->defs[i];
 			printf("[%zu] %s = ", i, d->name);
 			if (d->isfunc) {
 				printfn(d);
