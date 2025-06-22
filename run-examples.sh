@@ -2,12 +2,15 @@
 che build lisp.c a.out
 
 example () {
-    n=`./a.out < examples/$1 | tail -n 1`
-    if [ "$n" != $2 ]; then
-        echo $1: wanted $2, got $n
-        exit 1
+    ./a.out < examples/$1 | grep -v '>' > /tmp/a
+    echo "$2" > /tmp/b
+    diff /tmp/a /tmp/b
+    if [ $? != 0 ]; then
+        echo $1: mismatch
+        diff -y /tmp/a /tmp/b
+    else
+        echo ok $1
     fi
-    echo "ok $1"
 }
 
 example "1-1-7-sqrt" "1.41421"
@@ -27,3 +30,4 @@ example "1-2-4-fast-expt" "2048"
 example "1-2-5-gcd" "2"
 example "1-2-6-prime" "true"
 example "global" "123"
+example "random" "5\n7\n5\n3\n1\n3\n9"
