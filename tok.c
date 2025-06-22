@@ -36,8 +36,19 @@ pub bool islist(tok_t *x, const char *name) {
 		&& !strcmp(x->items[0]->name, name);
 }
 
-pub tok_t *newnumber(const char *val) {
+size_t mem = 0;
+
+tok_t *make() {
+	mem++;
+	if (mem == 500000) {
+		panic("out of memory");
+	}
 	tok_t *t = calloc(1, sizeof(tok_t));
+	return t;
+}
+
+pub tok_t *newnumber(const char *val) {
+	tok_t *t = make();
 	t->type = NUMBER;
 	t->value = calloc(60, 1);
 	strcpy(t->value, val);
@@ -45,14 +56,14 @@ pub tok_t *newnumber(const char *val) {
 }
 
 pub tok_t *newlist() {
-	tok_t *t = calloc(1, sizeof(tok_t));
+	tok_t *t = make();
 	t->type = LIST;
 	t->items = calloc(10, sizeof(t));
 	return t;
 }
 
 pub tok_t *newsym(const char *s) {
-	tok_t *t = calloc(1, sizeof(tok_t));
+	tok_t *t = make();
 	t->type = SYMBOL;
 	t->name = calloc(60, 1);
 	strcpy(t->name, s);
