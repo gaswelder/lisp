@@ -237,13 +237,20 @@ tok.tok_t *runcustomfunc(t *inter, binding_t *f, tok.tok_t *args) {
 		panic("%s is not a function", f->name);
 	}
 
+	// Check the arguments number
+	size_t nargs = 0;
+	if (args) nargs = args->nitems;
+	if (nargs != f->nargs) {
+		panic("function expects %zu arguments, got %zu", f->nargs, nargs);
+	}
+
 	// Reformat the function body to have a better handle on execution.
 	tok.tok_t **body = compile.compile(f->vals, f->nvals);
 
 	// Create a new scope for the call.
 	scope_t *s2 = newscope();
-	for (size_t a = 0; a < f->nargs; a++) {
-		pushdef(s2, f->argnames[a], eval(inter, args->items[a]));
+	for (size_t i = 0; i < f->nargs; i++) {
+		pushdef(s2, f->argnames[i], eval(inter, args->items[i]));
 	}
 	inter->stack[inter->depth++] = s2;
 
