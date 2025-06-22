@@ -1,0 +1,4 @@
+(define (r) (if (__globalget __rndseed)
+                    (__globalget __rndseed)
+                    123))
+(r)

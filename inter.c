@@ -8,6 +8,7 @@ pub typedef {
 	scope_t *stack[400];
 	size_t depth;
 	bool trace;
+	scope_t *globals;
 } t;
 
 // Represents a single binding.
@@ -38,6 +39,7 @@ pub t *new() {
 	t *r = calloc(1, sizeof(t));
 	if (!r) panic("calloc failed");
 	r->stack[r->depth++] = newscope();
+	r->globals = newscope();
 
 	// Define standard functions.
 	evalstr(r, "
@@ -62,6 +64,9 @@ pub t *new() {
 
 (define (even? n) (= (remainder n 2) 0))
 ");
+
+	// Put a clean scope on top of built-in definitions.
+	r->stack[r->depth++] = newscope();
 
 	// Enable tracing output if requested.
 	const char *v = self.getenv("DEBUG");
@@ -91,16 +96,23 @@ void pushdef(scope_t *s, const char *name, tok.tok_t *val) {
 	s->size++;
 }
 
+def_t *getdef(scope_t *s, const char *name) {
+	def_t *r = NULL;
+	for (size_t i = 0; i < s->size; i++) {
+		if (!strcmp(name, s->defs[i].name)) {
+			// Don't break because currently redefinitions are just
+			// added on the bottom.
+			r = &s->defs[i];
+		}
+	}
+	return r;
+}
+
 // Finds a binding.
 def_t *lookup(t *inter, const char *name) {
 	for (size_t d = 0; d < inter->depth; d++) {
 		scope_t *s = inter->stack[inter->depth - 1 - d];
-		def_t *r = NULL;
-		for (size_t i = 0; i < s->size; i++) {
-			if (!strcmp(name, s->defs[i].name)) {
-				r = &s->defs[i];
-			}
-		}
+		def_t *r = getdef(s, name);
 		if (r) {
 			return r;
 		}
@@ -197,8 +209,26 @@ tok.tok_t *runfunc(t *inter, const char *name, tok.tok_t *args) {
 		case "and": { return and(inter, args); }
 		case "or": { return or(inter, args); }
 		case "not": { return not(inter, args); }
+		case "__globalset": { return globalset(inter, args); }
+		case "__globalget": { return globalget(inter, args); }
 	}
 	panic("unknown function: %s", name);
+}
+
+tok.tok_t *globalset(t *inter, tok.tok_t *args) {
+	tok.tok_t *name = args->items[0];
+	tok.tok_t *val = eval(inter, args->items[1]);
+	pushdef(inter->globals, name->name, val);
+	return NULL;
+}
+
+tok.tok_t *globalget(t *inter, tok.tok_t *args) {
+	tok.tok_t *name = args->items[0];
+	def_t *d = getdef(inter->globals, name->name);
+	if (d) {
+		return d->val;
+	}
+	return NULL;
 }
 
 int compile_if(tok.tok_t *x, tok.tok_t *body[]) {
@@ -602,11 +632,12 @@ void trace_list_before(t *inter, tok.tok_t *x) {
 }
 
 void trace_defs(t *inter) {
-	for (size_t d = 0; d < inter->depth; d++) {
+	// -1 to exclude the first scope where built-in definitions are.
+	for (size_t d = 0; d < inter->depth - 1; d++) {
 		scope_t *s = inter->stack[inter->depth - d - 1];
 		for (size_t i = 0; i < s->size; i++) {
 			def_t *d = &s->defs[i];
-			printf("- [%zu] %s = ", i, d->name);
+			printf("[%zu] %s = ", i, d->name);
 			if (d->isfunc) {
 				printfn(d);
 				puts("");
