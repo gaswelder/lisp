@@ -231,9 +231,32 @@ tok.tok_t *globalget(t *inter, tok.tok_t *args) {
 	return NULL;
 }
 
-int compile_if(tok.tok_t *x, tok.tok_t *body[]) {
-	int added = 0;
+#define TODOSIZE 100
+#define TODOVOIDPSIZE 64
 
+tok.tok_t **compile(tok.tok_t **in, size_t n) {
+	tok.tok_t **out = calloc(TODOSIZE, TODOVOIDPSIZE);
+	int pos = 0;
+
+	for (size_t i = 0; i < n; i++) {
+		tok.tok_t *x = in[i];
+
+		// Flatten tail ifs so the interpreter can attempt a tail recursion.
+		if (i == n - 1 && tok.islist(x, "if")) {
+			pos = compile_if(x, out, pos);
+			continue;
+		}
+		if (i == n - 1 && tok.islist(x, "cond")) {
+			pos = compile_cond(x, out, pos);
+			continue;
+		}
+		out[pos++] = x;
+	}
+
+	return out;
+}
+
+int compile_if(tok.tok_t *x, tok.tok_t *body[], int added) {
 	// Tests the condition and skips the ok branch if false.
 	tok.tok_t *tst = tok.newlist();
 	tst->items[tst->nitems++] = tok.newsym("__test_and_jump_if_false");
@@ -250,9 +273,7 @@ int compile_if(tok.tok_t *x, tok.tok_t *body[]) {
 	return added;
 }
 
-int compile_cond(tok.tok_t *cond, tok.tok_t *body[]) {
-	int added = 0;
-
+int compile_cond(tok.tok_t *cond, tok.tok_t *body[], int added) {
 	for (size_t i = 1; i < cond->nitems; i++) {
 		tok.tok_t *alt = cond->items[i];
 
@@ -271,27 +292,15 @@ int compile_cond(tok.tok_t *cond, tok.tok_t *body[]) {
 	return added;
 }
 
+
+
 tok.tok_t *runcustomfunc(t *inter, binding_t *f, tok.tok_t *args) {
 	if (!f->isfunc) {
 		panic("%s is not a function", f->name);
 	}
 
 	// Reformat the function body to have a better handle on execution.
-	tok.tok_t *body[100] = {};
-	int added = 0;
-	for (size_t i = 0; i < f->nvals; i++) {
-		tok.tok_t *x = f->vals[i];
-		// Flatten ifs at the end so we can attempt a tail recursion.
-		if (i == f->nvals - 1 && tok.islist(x, "if")) {
-			added += compile_if(x, body);
-			continue;
-		}
-		if (i == f->nvals - 1 && tok.islist(x, "cond")) {
-			added += compile_cond(x, body);
-			continue;
-		}
-		body[added++] = x;
-	}
+	tok.tok_t **body = compile(f->vals, f->nvals);
 
 	// Create a new scope for the call.
 	scope_t *s2 = newscope();
@@ -336,6 +345,7 @@ tok.tok_t *runcustomfunc(t *inter, binding_t *f, tok.tok_t *args) {
 	}
 
 	inter->depth--;
+	OS.free(body);
 	return r;
 }
 
