@@ -1,7 +1,6 @@
 #import inter.c
 #import opt
 #import test
-#import tok.c
 
 typedef {
 	const char *in, *out;
@@ -155,8 +154,8 @@ int main(int argc, char **argv) {
 		case_t c = cases[i];
 
 		inter.t *in = inter.new();
-		tok.tok_t *x = inter.evalstr(in, c.in);
-		tok.print(x, buf, 4096);
+		inter.tok_t *x = inter.evalstr(in, c.in);
+		inter.print(x, buf, 4096);
 		inter.free(in);
 
 		if (!test.streq(buf, c.out)) {
