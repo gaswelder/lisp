@@ -10,6 +10,7 @@ pub typedef {
 	size_t depth;
 	bool trace;
 	scope_t *globals;
+	tok.pool_t pool;
 } t;
 
 // Represents a single binding.
@@ -39,6 +40,8 @@ pub typedef {
 pub t *new() {
 	t *r = calloc(1, sizeof(t));
 	if (!r) panic("calloc failed");
+	r->pool.items = calloc(500000, sizeof(tok.tok_t));
+	r->pool.cap = 500000;
 	r->stack[r->depth++] = newscope();
 	r->globals = newscope();
 
@@ -124,7 +127,7 @@ binding_t *lookup(t *inter, const char *name) {
 // Parses a string into expressions and evaluates them.
 pub tok.tok_t *evalstr(t *inter, const char *s) {
 	tokenizer.t *b = tokenizer.from_str(s);
-	tok.tok_t **all = read.readall(b);
+	tok.tok_t **all = read.readall(&inter->pool, b);
 	tokenizer.free(b);
 
 	tok.tok_t *r = NULL;
@@ -175,7 +178,7 @@ tok.tok_t *eval_list(t *inter, tok.tok_t *x) {
 		tok.print(first, buf, 100);
 		panic("invalid function invocation: got %s as function", buf);
 	}
-	return runfunc(inter, first->name, cdr(x));
+	return runfunc(inter, first->name, cdr(inter, x));
 }
 
 // Runs a function.
@@ -193,7 +196,7 @@ tok.tok_t *runfunc(t *inter, const char *name, tok.tok_t *args) {
 
 	switch str (name) {
 		case "quote": { return car(args); }
-		case "cons": { return cons(args); }
+		case "cons": { return cons(inter, args); }
 
 		case "apply": { return apply(inter, args); }
 		case "eq?": { return eq(inter, args); }
@@ -245,7 +248,7 @@ tok.tok_t *runcustomfunc(t *inter, binding_t *f, tok.tok_t *args) {
 	}
 
 	// Reformat the function body to have a better handle on execution.
-	tok.tok_t **body = compile.compile(f->vals, f->nvals);
+	tok.tok_t **body = compile.compile(&inter->pool, f->vals, f->nvals);
 
 	// Create a new scope for the call.
 	scope_t *s2 = newscope();
@@ -301,7 +304,7 @@ tok.tok_t *define(t *inter, tok.tok_t *args) {
 
 	// (define x const)
 	if (def->type == tok.SYMBOL) {
-		tok.tok_t *val = car(cdr(args));
+		tok.tok_t *val = car(cdr(inter, args));
 		scope_t *s = inter->stack[inter->depth-1];
 		pushdef(s, def->name, eval(inter, val));
 		return NULL;
@@ -338,10 +341,10 @@ tok.tok_t *cond(t *inter, tok.tok_t *args) {
 		tok.tok_t *cas = car(l);
 		tok.tok_t *cond = car(cas);
 		if (eval(inter, cond)) {
-			tok.tok_t *result = car(cdr(cas));
+			tok.tok_t *result = car(cdr(inter, cas));
 			return eval(inter, result);
 		}
-		l = cdr(l);
+		l = cdr(inter, l);
 	}
 	return NULL;
 }
@@ -351,21 +354,21 @@ tok.tok_t *not(t *inter, tok.tok_t *args) {
 	if (eval(inter, car(args))) {
 		return NULL;
 	}
-	return tok.newsym("true");
+	return tok.newsym(&inter->pool, "true");
 }
 
 // (if x then)
 // (if x then else)
 tok.tok_t *fif(t *inter, tok.tok_t *args) {
 	tok.tok_t *pred = car(args);
-	tok.tok_t *ethen = car(cdr(args));
+	tok.tok_t *ethen = car(cdr(inter, args));
 	if (eval(inter, pred)) {
 		return eval(inter, ethen);
 	}
 	if (args->nitems < 3) {
 		return NULL;
 	}
-	tok.tok_t *eelse = car(cdr(cdr(args)));
+	tok.tok_t *eelse = car(cdr(inter, cdr(inter, args)));
 	return eval(inter, eelse);
 }
 
@@ -377,14 +380,14 @@ tok.tok_t *and(t *inter, tok.tok_t *args) {
 			return NULL;
 		}
 	}
-	return tok.newsym("true");
+	return tok.newsym(&inter->pool, "true");
 }
 
 // (or a b c) returns the first non-null argument or null.
 tok.tok_t *or(t *inter, tok.tok_t *args) {
 	for (size_t i = 0; i < args->nitems; i++) {
 		if (eval(inter, args->items[i])) {
-			return tok.newsym("true");
+			return tok.newsym(&inter->pool, "true");
 		}
 	}
 	return NULL;
@@ -396,7 +399,7 @@ tok.tok_t *apply(t *inter, tok.tok_t *list) {
 		tok.dbgprint(list);
 		panic("first element is a non-symbol");
 	}
-	return runfunc(inter, fn->name, eval(inter, car(cdr(list))));
+	return runfunc(inter, fn->name, eval(inter, car(cdr(inter, list))));
 }
 
 void printnum(char *buf, double x) {
@@ -430,14 +433,14 @@ double reduce(t *inter, tok.tok_t *args, double start, int op) {
 tok.tok_t *mul(t *inter, tok.tok_t *args) {
 	char buf[100];
 	printnum(buf, reduce(inter, args, 1, 1));
-	return tok.newnumber(buf);
+	return tok.newnumber(&inter->pool, buf);
 }
 
 // (+ a b) returns a + b
 tok.tok_t *add(t *inter, tok.tok_t *args) {
 	char buf[100];
 	printnum(buf, reduce(inter, args, 0, 2));
-	return tok.newnumber(buf);
+	return tok.newnumber(&inter->pool, buf);
 }
 
 // (- a b) returns a - b
@@ -447,34 +450,34 @@ tok.tok_t *sub(t *inter, tok.tok_t *args) {
 	tok.tok_t *a = eval(inter, car(args));
 	if (args->nitems == 1) {
 		printnum(buf, -atof(a->value));
-		return tok.newnumber(buf);
+		return tok.newnumber(&inter->pool, buf);
 	}
-	tok.tok_t *b = eval(inter, car(cdr(args)));
+	tok.tok_t *b = eval(inter, car(cdr(inter, args)));
 	if (a->type != tok.NUMBER || b->type != tok.NUMBER) {
 		panic("not a number");
 	}
 	printnum(buf, atof(a->value) - atof(b->value));
-	return tok.newnumber(buf);
+	return tok.newnumber(&inter->pool, buf);
 }
 
 // (/ a b) returns a / b
 tok.tok_t *over(t *inter, tok.tok_t *args) {
 	tok.tok_t *a = eval(inter, car(args));
-	tok.tok_t *b = eval(inter, car(cdr(args)));
+	tok.tok_t *b = eval(inter, car(cdr(inter, args)));
 	if (a->type != tok.NUMBER || b->type != tok.NUMBER) {
 		tok.dbgprint(args);
 		panic("/: an argument is not a number");
 	}
 	char buf[100];
 	printnum(buf, atof(a->value) / atof(b->value));
-	return tok.newnumber(buf);
+	return tok.newnumber(&inter->pool, buf);
 }
 
 tok.tok_t *numeq(t *inter, tok.tok_t *args) {
 	tok.tok_t *a = eval(inter, car(args));
-	tok.tok_t *b = eval(inter, car(cdr(args)));
+	tok.tok_t *b = eval(inter, car(cdr(inter, args)));
 	if (atof(a->value) == atof(b->value)) {
-		return tok.newsym("true");
+		return tok.newsym(&inter->pool, "true");
 	}
 	return NULL;
 }
@@ -482,7 +485,7 @@ tok.tok_t *numeq(t *inter, tok.tok_t *args) {
 // (eq? a b) returns true if a equals b.
 tok.tok_t *eq(t *inter, tok.tok_t *args) {
 	tok.tok_t *a = eval(inter, car(args));
-	tok.tok_t *b = eval(inter, car(cdr(args)));
+	tok.tok_t *b = eval(inter, car(cdr(inter, args)));
 
 	// If types don't match, then not equal.
 	if (a->type != b->type) {
@@ -497,7 +500,7 @@ tok.tok_t *eq(t *inter, tok.tok_t *args) {
 		}
 	}
 	if (same) {
-		return tok.newsym("true");
+		return tok.newsym(&inter->pool, "true");
 	}
 	return NULL;
 }
@@ -505,9 +508,9 @@ tok.tok_t *eq(t *inter, tok.tok_t *args) {
 // (> a b) returns true if a > b
 tok.tok_t *gt(t *inter, tok.tok_t *args) {
 	tok.tok_t *a = eval(inter, car(args));
-	tok.tok_t *b = eval(inter, car(cdr(args)));
+	tok.tok_t *b = eval(inter, car(cdr(inter, args)));
 	if (atof(a->value) > atof(b->value)) {
-		return tok.newsym("true");
+		return tok.newsym(&inter->pool, "true");
 	}
 	return NULL;
 }
@@ -515,19 +518,19 @@ tok.tok_t *gt(t *inter, tok.tok_t *args) {
 // (< a b) returns true if a < b
 tok.tok_t *lt(t *inter, tok.tok_t *args) {
 	tok.tok_t *a = eval(inter, car(args));
-	tok.tok_t *b = eval(inter, car(cdr(args)));
+	tok.tok_t *b = eval(inter, car(cdr(inter, args)));
 	if (atof(a->value) < atof(b->value)) {
-		return tok.newsym("true");
+		return tok.newsym(&inter->pool, "true");
 	}
 	return NULL;
 }
 
 // (cons 1 x) constructs a list (1, ...x)
-tok.tok_t *cons(tok.tok_t *args) {
+tok.tok_t *cons(t *inter, tok.tok_t *args) {
 	tok.tok_t *head = car(args);
-	tok.tok_t *tail = car(cdr(args));
+	tok.tok_t *tail = car(cdr(inter, args));
 
-	tok.tok_t *r = tok.newlist();
+	tok.tok_t *r = tok.newlist(&inter->pool);
 	r->items[r->nitems++] = head;
 	for (size_t i = 0; i < tail->nitems; i++) {
 		r->items[r->nitems++] = tail->items[i];
@@ -544,11 +547,11 @@ tok.tok_t *car(tok.tok_t *x) {
 }
 
 // Returns the tail of the list x.
-tok.tok_t *cdr(tok.tok_t *x) {
+tok.tok_t *cdr(t *inter, tok.tok_t *x) {
 	if (!x || x->type != tok.LIST || x->nitems <= 1) {
 		return NULL;
 	}
-	tok.tok_t *r = tok.newlist();
+	tok.tok_t *r = tok.newlist(&inter->pool);
 	for (size_t i = 1; i < x->nitems; i++) {
 		r->items[i-1] = x->items[i];
 	}

@@ -7,15 +7,6 @@ pub enum {
 	NUMBER,
 };
 
-// const char *typename(int type) {
-// 	switch (type) {
-// 		case LIST: { return "list"; }
-// 		case SYMBOL: { return "sym"; }
-// 		case NUMBER: { return "num"; }
-// 		default: { return "UNKNOWN TYPE"; }
-// 	}
-// }
-
 pub typedef {
 	int type;
 
@@ -30,45 +21,54 @@ pub typedef {
 	size_t nitems;
 } tok_t;
 
-pub bool islist(tok_t *x, const char *name) {
-	return x->type == LIST
-		&& x->items[0]->type == SYMBOL
-		&& !strcmp(x->items[0]->name, name);
-}
+pub typedef {
+	size_t size;
+	size_t cap;
+	tok_t *items;
+} pool_t;
 
-size_t mem = 0;
-
-tok_t *make() {
-	mem++;
-	if (mem == 500000) {
+tok_t *make(pool_t *p) {
+	if (p->size == p->cap) {
 		panic("out of memory");
 	}
-	tok_t *t = calloc(1, sizeof(tok_t));
+	tok_t *t = &p->items[p->size++];
 	return t;
 }
 
-pub tok_t *newnumber(const char *val) {
-	tok_t *t = make();
+pub tok_t *newnumber(pool_t *p, const char *val) {
+	tok_t *t = make(p);
 	t->type = NUMBER;
 	t->value = calloc(60, 1);
 	strcpy(t->value, val);
 	return t;
 }
 
-pub tok_t *newlist() {
-	tok_t *t = make();
+pub tok_t *newlist(pool_t *p) {
+	tok_t *t = make(p);
 	t->type = LIST;
 	t->items = calloc(10, sizeof(t));
 	return t;
 }
 
-pub tok_t *newsym(const char *s) {
-	tok_t *t = make();
+pub tok_t *newsym(pool_t *p, const char *s) {
+	tok_t *t = make(p);
 	t->type = SYMBOL;
 	t->name = calloc(60, 1);
 	strcpy(t->name, s);
 	return t;
 }
+
+
+
+pub bool islist(tok_t *x, const char *name) {
+	return x->type == LIST
+		&& x->items[0]->type == SYMBOL
+		&& !strcmp(x->items[0]->name, name);
+}
+
+
+
+
 
 // Prints the given item to stdout for debugging.
 pub void dbgprint(tok_t *x) {

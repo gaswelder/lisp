@@ -25,7 +25,7 @@ int main(int argc, char *argv[]) {
 	inter.t *in = inter.new();
 	while (true) {
 		// Read a form.
-		tok.tok_t *x = read.read(b);
+		tok.tok_t *x = read.read(&in->pool, b);
 		if (!x) break;
 
 		// Echo.
@@ -40,5 +40,7 @@ int main(int argc, char *argv[]) {
 			puts(buf);
 		}
 	}
+
+	// printf("%zu\n", in->pool.mem);
 	return 0;
 }
