@@ -14,7 +14,7 @@ pub typedef {
 	size_t poolsize;
 	tok_t *poolitems;
 	size_t last_alloc;
-} t;
+} vm_t;
 
 // Represents a single binding.
 pub typedef {
@@ -42,8 +42,8 @@ pub typedef {
 bool GCDEBUG = false;
 
 // Creates a new instance of the interpreter.
-pub t *new(size_t N) {
-	t *r = calloc(1, sizeof(t));
+pub vm_t *new(size_t N) {
+	vm_t *r = calloc(1, sizeof(vm_t));
 	if (!r) panic("calloc failed");
 
 	// Enable tracing output if requested.
@@ -98,12 +98,12 @@ pub t *new(size_t N) {
 }
 
 // Frees an instance of the interpreter.
-pub void free(t *r) {
+pub void free(vm_t *r) {
 	// Ignore all the rest for now.
 	OS.free(r);
 }
 
-// Creates a new instance of scope.
+// Creates a new scope.
 scope_t *newscope() {
 	scope_t *s = calloc(1, sizeof(scope_t));
 	if (!s) panic("calloc failed");
@@ -112,6 +112,9 @@ scope_t *newscope() {
 
 // Adds a binding to the scope.
 void pushdef(scope_t *s, const char *name, tok_t *val) {
+	if (!name || !val) {
+		panic("name or val is NULL");
+	}
 	if (s->size == 100) {
 		panic("no more space in scope");
 	}
@@ -120,13 +123,15 @@ void pushdef(scope_t *s, const char *name, tok_t *val) {
 	s->size++;
 }
 
-binding_t *getdef(scope_t *s, const char *name) {
-	if (!name) {
-		return NULL;
+// Returns the binding with name n from scope s.
+// Returns NULL if there is no such binding.
+binding_t *getdef(scope_t *s, const char *n) {
+	if (!n) {
+		panic("n is null");
 	}
 	binding_t *r = NULL;
 	for (size_t i = 0; i < s->size; i++) {
-		if (!strcmp(name, s->defs[i].name)) {
+		if (!strcmp(n, s->defs[i].name)) {
 			// Don't break because redefinitions can be added further down.
 			r = &s->defs[i];
 		}
@@ -134,11 +139,13 @@ binding_t *getdef(scope_t *s, const char *name) {
 	return r;
 }
 
-// Finds a binding.
-binding_t *lookup(t *inter, const char *name) {
+binding_t *lookup(vm_t *inter, const char *n) {
+	if (!n) {
+		panic("n is null");
+	}
 	for (size_t d = 0; d < inter->depth; d++) {
 		scope_t *s = inter->stack[inter->depth - 1 - d];
-		binding_t *r = getdef(s, name);
+		binding_t *r = getdef(s, n);
 		if (r) {
 			return r;
 		}
@@ -147,7 +154,7 @@ binding_t *lookup(t *inter, const char *name) {
 }
 
 // Parses a string into expressions and evaluates them.
-pub tok_t *evalstr(t *inter, const char *s) {
+pub tok_t *evalstr(vm_t *inter, const char *s) {
 	tokenizer.t *b = tokenizer.from_str(s);
 	tok_t **all = readall(inter, b);
 	tokenizer.free(b);
@@ -163,7 +170,7 @@ pub tok_t *evalstr(t *inter, const char *s) {
 }
 
 // Evaluates a node.
-pub tok_t *eval(t *inter, tok_t *x) {
+pub tok_t *eval(vm_t *inter, tok_t *x) {
 	if (!x) {
 		panic("eval of NULL");
 	}
@@ -194,7 +201,7 @@ pub tok_t *eval(t *inter, tok_t *x) {
 }
 
 // Evaluates a list node.
-tok_t *eval_list(t *inter, tok_t *x) {
+tok_t *eval_list(vm_t *inter, tok_t *x) {
 	// The first item could be anything, we might need to evaluate it
 	// to find out which function to run.
 	tok_t *first = car(x);
@@ -211,7 +218,7 @@ tok_t *eval_list(t *inter, tok_t *x) {
 }
 
 // Runs a function.
-tok_t *runfunc(t *inter, const char *name, tok_t *args) {
+tok_t *runfunc(vm_t *inter, const char *name, tok_t *args) {
 	if (inter->trace) {
 		trace_indent(inter->depth);
 		printf("RUN_FUNC: %s\n", name);
@@ -248,19 +255,19 @@ tok_t *runfunc(t *inter, const char *name, tok_t *args) {
 	panic("unknown function: %s", name);
 }
 
-tok_t *fn_globalset(t *inter, tok_t *args) {
+tok_t *fn_globalset(vm_t *inter, tok_t *args) {
 	tok_t *name = args->items[0];
 	tok_t *val = eval(inter, args->items[1]);
 	pushdef(inter->stack[0], name->name, val);
 	return NULL;
 }
 
-tok_t *fn_globalget(t *inter, tok_t *args) {
+tok_t *fn_globalget(vm_t *inter, tok_t *args) {
 	tok_t *name = args->items[0];
 	return globalget(inter, name->name);
 }
 
-tok_t *globalget(t *inter, const char *name) {
+tok_t *globalget(vm_t *inter, const char *name) {
 	binding_t *d = getdef(inter->stack[0], name);
 	if (d) {
 		return d->val;
@@ -268,7 +275,7 @@ tok_t *globalget(t *inter, const char *name) {
 	return NULL;
 }
 
-tok_t *runcustomfunc(t *inter, binding_t *f, tok_t *args) {
+tok_t *runcustomfunc(vm_t *inter, binding_t *f, tok_t *args) {
 	if (!f->isfunc) {
 		panic("%s is not a function", f->name);
 	}
@@ -332,7 +339,7 @@ tok_t *runcustomfunc(t *inter, binding_t *f, tok_t *args) {
 
 // (define x const) defines a constant.
 // (define (f x) body) defines a function.
-tok_t *fn_define(t *inter, tok_t *args) {
+tok_t *fn_define(vm_t *inter, tok_t *args) {
 	tok_t *def = car(args);
 
 	// (define x const)
@@ -368,7 +375,7 @@ tok_t *fn_define(t *inter, tok_t *args) {
 }
 
 
-tok_t *cond(t *inter, tok_t *args) {
+tok_t *cond(vm_t *inter, tok_t *args) {
 	tok_t *l = args;
 	while (l) {
 		tok_t *cas = car(l);
@@ -383,7 +390,7 @@ tok_t *cond(t *inter, tok_t *args) {
 }
 
 // (not x) returns NULL if x is not null.
-tok_t *not(t *inter, tok_t *args) {
+tok_t *not(vm_t *inter, tok_t *args) {
 	if (eval(inter, car(args))) {
 		return NULL;
 	}
@@ -392,7 +399,7 @@ tok_t *not(t *inter, tok_t *args) {
 
 // (if x then)
 // (if x then else)
-tok_t *fif(t *inter, tok_t *args) {
+tok_t *fif(vm_t *inter, tok_t *args) {
 	tok_t *pred = car(args);
 	tok_t *ethen = car(cdr(inter, args));
 	if (eval(inter, pred)) {
@@ -407,7 +414,7 @@ tok_t *fif(t *inter, tok_t *args) {
 
 // (and a b c) returns c if a, b and c are not null.
 // Returns null otherwise.
-tok_t *and(t *inter, tok_t *args) {
+tok_t *and(vm_t *inter, tok_t *args) {
 	for (size_t i = 0; i < args->nitems; i++) {
 		if (!eval(inter, args->items[i])) {
 			return NULL;
@@ -417,7 +424,7 @@ tok_t *and(t *inter, tok_t *args) {
 }
 
 // (or a b c) returns the first non-null argument or null.
-tok_t *or(t *inter, tok_t *args) {
+tok_t *or(vm_t *inter, tok_t *args) {
 	for (size_t i = 0; i < args->nitems; i++) {
 		if (eval(inter, args->items[i])) {
 			return newsym(inter, "true");
@@ -426,7 +433,7 @@ tok_t *or(t *inter, tok_t *args) {
 	return NULL;
 }
 
-tok_t *apply(t *inter, tok_t *list) {
+tok_t *apply(vm_t *inter, tok_t *list) {
 	tok_t *fn = car(list);
 	if (fn->type != SYMBOL) {
 		dbgprint(list);
@@ -439,7 +446,7 @@ void printnum(char *buf, double x) {
 	sprintf(buf, "%g", x);
 }
 
-double reduce(t *inter, tok_t *args, double start, int op) {
+double reduce(vm_t *inter, tok_t *args, double start, int op) {
 	if (args->type != LIST) {
 		panic("not a list");
 	}
@@ -463,21 +470,21 @@ double reduce(t *inter, tok_t *args, double start, int op) {
 }
 
 // (* a b) returns a * b
-tok_t *mul(t *inter, tok_t *args) {
+tok_t *mul(vm_t *inter, tok_t *args) {
 	char buf[100];
 	printnum(buf, reduce(inter, args, 1, 1));
 	return newnumber(inter, buf);
 }
 
 // (+ a b) returns a + b
-tok_t *add(t *inter, tok_t *args) {
+tok_t *add(vm_t *inter, tok_t *args) {
 	char buf[100];
 	printnum(buf, reduce(inter, args, 0, 2));
 	return newnumber(inter, buf);
 }
 
 // (- a b) returns a - b
-tok_t *sub(t *inter, tok_t *args) {
+tok_t *sub(vm_t *inter, tok_t *args) {
 	char buf[100];
 
 	tok_t *a = eval(inter, car(args));
@@ -494,7 +501,7 @@ tok_t *sub(t *inter, tok_t *args) {
 }
 
 // (/ a b) returns a / b
-tok_t *over(t *inter, tok_t *args) {
+tok_t *over(vm_t *inter, tok_t *args) {
 	tok_t *a = eval(inter, car(args));
 	tok_t *b = eval(inter, car(cdr(inter, args)));
 	if (a->type != NUMBER || b->type != NUMBER) {
@@ -506,7 +513,7 @@ tok_t *over(t *inter, tok_t *args) {
 	return newnumber(inter, buf);
 }
 
-tok_t *numeq(t *inter, tok_t *args) {
+tok_t *numeq(vm_t *inter, tok_t *args) {
 	tok_t *a = eval(inter, car(args));
 	tok_t *b = eval(inter, car(cdr(inter, args)));
 	if (atof(a->value) == atof(b->value)) {
@@ -516,7 +523,7 @@ tok_t *numeq(t *inter, tok_t *args) {
 }
 
 // (eq? a b) returns true if a equals b.
-tok_t *eq(t *inter, tok_t *args) {
+tok_t *eq(vm_t *inter, tok_t *args) {
 	tok_t *a = eval(inter, car(args));
 	tok_t *b = eval(inter, car(cdr(inter, args)));
 
@@ -539,7 +546,7 @@ tok_t *eq(t *inter, tok_t *args) {
 }
 
 // (> a b) returns true if a > b
-tok_t *gt(t *inter, tok_t *args) {
+tok_t *gt(vm_t *inter, tok_t *args) {
 	tok_t *a = eval(inter, car(args));
 	tok_t *b = eval(inter, car(cdr(inter, args)));
 	if (atof(a->value) > atof(b->value)) {
@@ -549,7 +556,7 @@ tok_t *gt(t *inter, tok_t *args) {
 }
 
 // (< a b) returns true if a < b
-tok_t *lt(t *inter, tok_t *args) {
+tok_t *lt(vm_t *inter, tok_t *args) {
 	tok_t *a = eval(inter, car(args));
 	tok_t *b = eval(inter, car(cdr(inter, args)));
 	if (atof(a->value) < atof(b->value)) {
@@ -559,7 +566,7 @@ tok_t *lt(t *inter, tok_t *args) {
 }
 
 // (cons 1 x) constructs a list (1, ...x)
-tok_t *cons(t *inter, tok_t *args) {
+tok_t *cons(vm_t *inter, tok_t *args) {
 	tok_t *head = car(args);
 	tok_t *tail = car(cdr(inter, args));
 
@@ -580,7 +587,7 @@ tok_t *car(tok_t *x) {
 }
 
 // Returns the tail of the list x.
-tok_t *cdr(t *inter, tok_t *x) {
+tok_t *cdr(vm_t *inter, tok_t *x) {
 	if (!x || x->type != LIST || x->nitems <= 1) {
 		return NULL;
 	}
@@ -607,14 +614,14 @@ void trace_indent(size_t depth) {
 	for (size_t i = 0; i < depth; i++) printf("  ");
 }
 
-void trace_symbol_eval(t *inter, tok_t *x, *r) {
+void trace_symbol_eval(vm_t *inter, tok_t *x, *r) {
 	if (!inter->trace) return;
 	trace_indent(inter->depth);
 	printf("EVAL_SYM %s: ", x->name);
 	dbgprint(r);
 }
 
-void trace_list_before(t *inter, tok_t *x) {
+void trace_list_before(vm_t *inter, tok_t *x) {
 	if (!inter->trace) return;
 	trace_defs(inter);
 	trace_indent(inter->depth);
@@ -622,7 +629,7 @@ void trace_list_before(t *inter, tok_t *x) {
 	dbgprint(x);
 }
 
-void trace_defs(t *inter) {
+void trace_defs(vm_t *inter) {
 	// -1 to exclude the first scope where built-in definitions are.
 	for (size_t d = 0; d < inter->depth - 1; d++) {
 		scope_t *s = inter->stack[inter->depth - d - 1];
@@ -640,14 +647,14 @@ void trace_defs(t *inter) {
 	}
 }
 
-void trace_list_after(t *inter, tok_t *r) {
+void trace_list_after(vm_t *inter, tok_t *r) {
 	if (!inter->trace) return;
 	trace_indent(inter->depth);
 	printf("result: ");
 	dbgprint(r);
 }
 
-pub tok_t **readall(t *p, tokenizer.t *b) {
+pub tok_t **readall(vm_t *p, tokenizer.t *b) {
 	tok_t **all = calloc(100, sizeof(b));
 	size_t n = 0;
 	while (true) {
@@ -659,7 +666,7 @@ pub tok_t **readall(t *p, tokenizer.t *b) {
 }
 
 // Reads next item from the buffer.
-pub tok_t *readtok(t *p, tokenizer.t *b) {
+pub tok_t *readtok(vm_t *p, tokenizer.t *b) {
 	tokenizer.spaces(b);
 	if (!tokenizer.more(b)) {
 		return NULL;
@@ -674,7 +681,7 @@ pub tok_t *readtok(t *p, tokenizer.t *b) {
 }
 
 // Reads a number.
-tok_t *readnum(t *p, tokenizer.t *b) {
+tok_t *readnum(vm_t *p, tokenizer.t *b) {
 	char buf[100];
 	if (!tokenizer.num(b, buf, 100)) {
 		panic("failed to read a number");
@@ -683,7 +690,7 @@ tok_t *readnum(t *p, tokenizer.t *b) {
 }
 
 // Reads a symbol.
-tok_t *readsymbol(t *p, tokenizer.t *b) {
+tok_t *readsymbol(vm_t *p, tokenizer.t *b) {
 	tok_t *x = newsym(p, "");
 	int pos = 0;
 	while (tokenizer.more(b) && !isspace(tokenizer.peek(b)) && tokenizer.peek(b) != ')') {
@@ -697,7 +704,7 @@ tok_t *readsymbol(t *p, tokenizer.t *b) {
 
 
 // Reads a list.
-tok_t *readlist(t *p, tokenizer.t *b) {
+tok_t *readlist(vm_t *p, tokenizer.t *b) {
 	tok_t *x = newlist(p);
 
 	tokenizer.get(b); // "("
@@ -739,7 +746,7 @@ pub typedef {
 
 
 
-tok_t *alloc(t *inter) {
+tok_t *alloc(vm_t *inter) {
 	for (size_t i = 0; i < inter->poolsize; i++) {
 		size_t pos = (inter->last_alloc + i) % inter->poolsize;
 		if (inter->in_use[pos]) {
@@ -759,7 +766,7 @@ tok_t *alloc(t *inter) {
 	return NULL;
 }
 
-tok_t *make(t *p) {
+tok_t *make(vm_t *p) {
 	tok_t *x = alloc(p);
 	if (!x) {
 		gc(p);
@@ -771,7 +778,7 @@ tok_t *make(t *p) {
 	return x;
 }
 
-pub void gc(t *p) {
+pub void gc(vm_t *p) {
 	if (GCDEBUG) {
 		printf("depth = %zu, poolsize=%zu\n", p->depth, p->poolsize);
 	}
@@ -814,7 +821,7 @@ pub void gc(t *p) {
 	bitset.free(used);
 }
 
-void gc_mark(bitset.t *used, t *inter, tok_t *x) {
+void gc_mark(bitset.t *used, vm_t *inter, tok_t *x) {
 	if (!x) {
 		return;
 	}
@@ -830,7 +837,7 @@ void gc_mark(bitset.t *used, t *inter, tok_t *x) {
 	}
 }
 
-tok_t *newnumber(t *p, const char *val) {
+tok_t *newnumber(vm_t *p, const char *val) {
 	tok_t *x = make(p);
 	x->type = NUMBER;
 	x->value = calloc(60, 1);
@@ -838,14 +845,14 @@ tok_t *newnumber(t *p, const char *val) {
 	return x;
 }
 
-tok_t *newlist(t *p) {
+tok_t *newlist(vm_t *p) {
 	tok_t *x = make(p);
 	x->type = LIST;
 	x->items = calloc(10, sizeof(x));
 	return x;
 }
 
-tok_t *newsym(t *p, const char *s) {
+tok_t *newsym(vm_t *p, const char *s) {
 	tok_t *x = make(p);
 	x->type = SYMBOL;
 	x->name = calloc(60, 1);
@@ -853,17 +860,11 @@ tok_t *newsym(t *p, const char *s) {
 	return x;
 }
 
-
-
 pub bool islist(tok_t *x, const char *name) {
 	return x->type == LIST
 		&& x->items[0]->type == SYMBOL
 		&& !strcmp(x->items[0]->name, name);
 }
-
-
-
-
 
 // Prints the given item to stdout for debugging.
 void dbgprint(tok_t *x) {
@@ -917,7 +918,7 @@ void _print(strbuilder.str *s, tok_t *x) {
 #define TODOSIZE 100
 #define TODOVOIDPSIZE 64
 
-tok_t **compile(t *p, tok_t **in, size_t n) {
+tok_t **compile(vm_t *p, tok_t **in, size_t n) {
 	tok_t **out = calloc(TODOSIZE, TODOVOIDPSIZE);
 	int pos = 0;
 
@@ -939,7 +940,7 @@ tok_t **compile(t *p, tok_t **in, size_t n) {
 	return out;
 }
 
-int compile_if(t *p, tok_t *x, tok_t *body[], int added) {
+int compile_if(vm_t *p, tok_t *x, tok_t *body[], int added) {
 	// Tests the condition and skips the ok branch if false.
 	tok_t *tst = newlist(p);
 	tst->items[tst->nitems++] = globalget(p, "__test_and_jump_if_false");
@@ -956,7 +957,7 @@ int compile_if(t *p, tok_t *x, tok_t *body[], int added) {
 	return added;
 }
 
-int compile_cond(t *p, tok_t *cond, tok_t *body[], int added) {
+int compile_cond(vm_t *p, tok_t *cond, tok_t *body[], int added) {
 	for (size_t i = 1; i < cond->nitems; i++) {
 		tok_t *alt = cond->items[i];
 
