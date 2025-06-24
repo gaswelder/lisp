@@ -23,7 +23,7 @@ int main(int argc, char *argv[]) {
 	inter.vm_t *in = inter.new(400000);
 	while (true) {
 		// Read a form.
-		inter.tok_t *x = inter.readtok(in, b);
+		inter.val_t *x = inter.readtok(in, b);
 		if (!x) break;
 
 		// Echo.
@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
 		puts(buf);
 
 		// Evaluate and print.
-		inter.tok_t *r = inter.eval(in, x);
+		inter.val_t *r = inter.eval(in, x);
 		if (!inter.islist(x, "define")) {
 			inter.print(r, buf, 4096);
 			puts(buf);

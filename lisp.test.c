@@ -154,7 +154,7 @@ int main(int argc, char **argv) {
 		case_t c = cases[i];
 
 		inter.vm_t *in = inter.new(1000);
-		inter.tok_t *x = inter.evalstr(in, c.in);
+		inter.val_t *x = inter.evalstr(in, c.in);
 		inter.print(x, buf, 4096);
 		inter.free(in);
 
