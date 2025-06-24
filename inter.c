@@ -744,97 +744,14 @@ pub typedef {
 	size_t nitems;
 } val_t;
 
+void gc_trace(const char *format, ...) {
+	if (!GCDEBUG) return;
 
-
-val_t *alloc(vm_t *inter) {
-	for (size_t i = 0; i < inter->poolsize; i++) {
-		size_t pos = (inter->last_alloc + i) % inter->poolsize;
-		if (inter->in_use[pos]) {
-			continue;
-		}
-		if (GCDEBUG) {
-			printf("alloc at %zu\n", pos);
-		}
-		inter->in_use[pos] = true;
-		inter->poolitems[pos].mempos = pos;
-		inter->last_alloc = pos;
-		return &inter->poolitems[pos];
-	}
-	if (GCDEBUG) {
-		printf("OOM\n");
-	}
-	return NULL;
-}
-
-val_t *make(vm_t *p) {
-	val_t *x = alloc(p);
-	if (!x) {
-		gc(p);
-		x = alloc(p);
-		if (!x) {
-			panic("out of memory");
-		}
-	}
-	return x;
-}
-
-pub void gc(vm_t *p) {
-	if (GCDEBUG) {
-		printf("depth = %zu, poolsize=%zu\n", p->depth, p->poolsize);
-	}
-
-	bitset.t *used = bitset.new(p->poolsize);
-
-	for (size_t i = 0; i < p->depth; i++) {
-		if (GCDEBUG) {
-			printf("frame %zu\n-----------\n", i);
-		}
-		scope_t *s = p->stack[i];
-		for (size_t j = 0; j < s->size; j++) {
-			binding_t *b = &s->defs[j];
-			if (GCDEBUG) {
-				printf("%zu: %s\n", j, b->name);
-			}
-			gc_mark(used, p, b->val);
-			if (b->isfunc) {
-				for (size_t k = 0; k < b->nvals; k++) {
-					gc_mark(used, p, b->vals[k]);
-				}
-			}
-		}
-	}
-
-	size_t frees = 0;
-	for (size_t i = 0; i < p->poolsize; i++) {
-		if (!p->in_use[i] || bitset.isset(used, i)) {
-			continue;
-		}
-		if (GCDEBUG) {
-			printf("free %zu: ", i);
-			dbgprint(&p->poolitems[i]);
-		}
-		p->in_use[i] = false;
-		// memset(&p->poolitems[i], 0, sizeof(val_t));
-		frees++;
-	}
-	// printf("gc: %zu frees\n", frees);
-	bitset.free(used);
-}
-
-void gc_mark(bitset.t *used, vm_t *inter, val_t *x) {
-	if (!x) {
-		return;
-	}
-	if (GCDEBUG) {
-		printf("mark %zu: ", x->mempos);
-		dbgprint(x);
-	}
-	bitset.set(used, x->mempos);
-	if (x->type == LIST) {
-		for (size_t i = 0; i < x->nitems; i++) {
-			gc_mark(used, inter, x->items[i]);
-		}
-	}
+	va_list args = {};
+	va_start(args, format);
+	vprintf(format, args);
+	va_end(args);
+	putchar('\n');
 }
 
 val_t *newnumber(vm_t *p, const char *val) {
@@ -858,6 +775,90 @@ val_t *newsym(vm_t *p, const char *s) {
 	x->name = calloc(60, 1);
 	strcpy(x->name, s);
 	return x;
+}
+
+val_t *make(vm_t *p) {
+	val_t *x = alloc(p);
+	if (!x) {
+		gc(p);
+		x = alloc(p);
+		if (!x) {
+			panic("out of memory");
+		}
+	}
+	return x;
+}
+
+// Returns a pointer to an unused value from the pool.
+// Returns NULL if there are no free values.
+val_t *alloc(vm_t *inter) {
+	for (size_t i = 0; i < inter->poolsize; i++) {
+		size_t pos = (inter->last_alloc + i) % inter->poolsize;
+		if (inter->in_use[pos]) {
+			continue;
+		}
+		gc_trace("alloc at %zu", pos);
+		inter->in_use[pos] = true;
+		inter->poolitems[pos].mempos = pos;
+		inter->last_alloc = pos;
+		return &inter->poolitems[pos];
+	}
+	gc_trace("OOM");
+	return NULL;
+}
+
+// Runs a full GC cycle.
+pub void gc(vm_t *inter) {
+	gc_trace("gc start: depth=%zu, poolsize=%zu", inter->depth, inter->poolsize);
+
+	bitset.t *used = bitset.new(inter->poolsize);
+
+	for (size_t i = 0; i < inter->depth; i++) {
+		gc_trace("frame %zu\n-----------", i);
+		scope_t *s = inter->stack[i];
+		for (size_t j = 0; j < s->size; j++) {
+			binding_t *b = &s->defs[j];
+			gc_trace("%zu: %s", j, b->name);
+			gc_mark(used, inter, b->val);
+			if (b->isfunc) {
+				for (size_t k = 0; k < b->nvals; k++) {
+					gc_mark(used, inter, b->vals[k]);
+				}
+			}
+		}
+	}
+
+	size_t frees = 0;
+	for (size_t i = 0; i < inter->poolsize; i++) {
+		if (!inter->in_use[i] || bitset.isset(used, i)) {
+			continue;
+		}
+		if (GCDEBUG) {
+			printf("free %zu: ", i);
+			dbgprint(&inter->poolitems[i]);
+		}
+		inter->in_use[i] = false;
+		// memset(&p->poolitems[i], 0, sizeof(val_t));
+		frees++;
+	}
+	// printf("gc: %zu frees\n", frees);
+	bitset.free(used);
+}
+
+void gc_mark(bitset.t *used, vm_t *inter, val_t *x) {
+	if (!x) {
+		return;
+	}
+	if (GCDEBUG) {
+		printf("mark %zu: ", x->mempos);
+		dbgprint(x);
+	}
+	bitset.set(used, x->mempos);
+	if (x->type == LIST) {
+		for (size_t i = 0; i < x->nitems; i++) {
+			gc_mark(used, inter, x->items[i]);
+		}
+	}
 }
 
 pub bool islist(val_t *x, const char *name) {
