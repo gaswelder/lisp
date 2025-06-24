@@ -7,7 +7,6 @@
 pub typedef {
 	bool trace;
 
-	scope_t *globals;
 	scope_t *stack[400];
 	size_t depth;
 
@@ -44,12 +43,24 @@ pub typedef {
 pub t *new() {
 	t *r = calloc(1, sizeof(t));
 	if (!r) panic("calloc failed");
+
+	// Enable tracing output if requested.
+	const char *v = self.getenv("DEBUG");
+	if (v && strcmp(v, "0")) {
+		r->trace = true;
+	}
+
+	// Memory.
 	size_t N = 500000;
 	r->poolitems = calloc(N, sizeof(tok_t));
 	r->poolsize = N;
 	r->in_use = calloc(N, sizeof(bool));
+
+	// Scope 0 for globals.
 	r->stack[r->depth++] = newscope();
-	r->globals = newscope();
+
+	// Scope 1 for predefined things.
+	r->stack[r->depth++] = newscope();
 
 	// Define standard functions.
 	evalstr(r, "
@@ -75,14 +86,8 @@ pub t *new() {
 (define (even? n) (= (remainder n 2) 0))
 ");
 
-	// Put a clean scope on top of built-in definitions.
+	// A clean scope on top for user programs.
 	r->stack[r->depth++] = newscope();
-
-	// Enable tracing output if requested.
-	const char *v = self.getenv("DEBUG");
-	if (v && strcmp(v, "0")) {
-		r->trace = true;
-	}
 	return r;
 }
 
@@ -232,13 +237,13 @@ tok_t *runfunc(t *inter, const char *name, tok_t *args) {
 tok_t *globalset(t *inter, tok_t *args) {
 	tok_t *name = args->items[0];
 	tok_t *val = eval(inter, args->items[1]);
-	pushdef(inter->globals, name->name, val);
+	pushdef(inter->stack[0], name->name, val);
 	return NULL;
 }
 
 tok_t *globalget(t *inter, tok_t *args) {
 	tok_t *name = args->items[0];
-	binding_t *d = getdef(inter->globals, name->name);
+	binding_t *d = getdef(inter->stack[0], name->name);
 	if (d) {
 		return d->val;
 	}
