@@ -1,4 +1,4 @@
-// #import bitset.c
+#import bitset.c
 #import os/self
 #import strbuilder
 #import tokenizer
@@ -39,8 +39,10 @@ pub typedef {
 	binding_t defs[100];
 } scope_t;
 
+bool GCDEBUG = false;
+
 // Creates a new instance of the interpreter.
-pub t *new() {
+pub t *new(size_t N) {
 	t *r = calloc(1, sizeof(t));
 	if (!r) panic("calloc failed");
 
@@ -51,13 +53,17 @@ pub t *new() {
 	}
 
 	// Memory.
-	size_t N = 500000;
 	r->poolitems = calloc(N, sizeof(tok_t));
 	r->poolsize = N;
 	r->in_use = calloc(N, sizeof(bool));
 
 	// Scope 0 for globals.
 	r->stack[r->depth++] = newscope();
+
+	// These are special symbols used in compiled bodies for tail recursion.
+	// They are stashed here in globals to keep them from being GC'd.
+	evalstr(r, "(define __end __op_end)");
+	evalstr(r, "(define __test_and_jump_if_false __op_test_and_jump_if_false)");
 
 	// Scope 1 for predefined things.
 	r->stack[r->depth++] = newscope();
@@ -106,17 +112,22 @@ scope_t *newscope() {
 
 // Adds a binding to the scope.
 void pushdef(scope_t *s, const char *name, tok_t *val) {
+	if (s->size == 100) {
+		panic("no more space in scope");
+	}
 	strcpy(s->defs[s->size].name, name);
 	s->defs[s->size].val = val;
 	s->size++;
 }
 
 binding_t *getdef(scope_t *s, const char *name) {
+	if (!name) {
+		return NULL;
+	}
 	binding_t *r = NULL;
 	for (size_t i = 0; i < s->size; i++) {
 		if (!strcmp(name, s->defs[i].name)) {
-			// Don't break because currently redefinitions are just
-			// added on the bottom.
+			// Don't break because redefinitions can be added further down.
 			r = &s->defs[i];
 		}
 	}
@@ -153,6 +164,9 @@ pub tok_t *evalstr(t *inter, const char *s) {
 
 // Evaluates a node.
 pub tok_t *eval(t *inter, tok_t *x) {
+	if (!x) {
+		panic("eval of NULL");
+	}
 	switch (x->type) {
 		case NUMBER: {
 			return x;
@@ -176,7 +190,7 @@ pub tok_t *eval(t *inter, tok_t *x) {
 		default: {
 			panic("unexpected value type");
 		}
-	}	
+	}
 }
 
 // Evaluates a list node.
@@ -215,7 +229,7 @@ tok_t *runfunc(t *inter, const char *name, tok_t *args) {
 
 		case "apply": { return apply(inter, args); }
 		case "eq?": { return eq(inter, args); }
-		case "define": { return define(inter, args); }
+		case "define": { return fn_define(inter, args); }
 		case "*": { return mul(inter, args); }
 		case "+": { return add(inter, args); }
 		case "-": { return sub(inter, args); }
@@ -228,22 +242,26 @@ tok_t *runfunc(t *inter, const char *name, tok_t *args) {
 		case "and": { return and(inter, args); }
 		case "or": { return or(inter, args); }
 		case "not": { return not(inter, args); }
-		case "__globalset": { return globalset(inter, args); }
-		case "__globalget": { return globalget(inter, args); }
+		case "__globalset": { return fn_globalset(inter, args); }
+		case "__globalget": { return fn_globalget(inter, args); }
 	}
 	panic("unknown function: %s", name);
 }
 
-tok_t *globalset(t *inter, tok_t *args) {
+tok_t *fn_globalset(t *inter, tok_t *args) {
 	tok_t *name = args->items[0];
 	tok_t *val = eval(inter, args->items[1]);
 	pushdef(inter->stack[0], name->name, val);
 	return NULL;
 }
 
-tok_t *globalget(t *inter, tok_t *args) {
+tok_t *fn_globalget(t *inter, tok_t *args) {
 	tok_t *name = args->items[0];
-	binding_t *d = getdef(inter->stack[0], name->name);
+	return globalget(inter, name->name);
+}
+
+tok_t *globalget(t *inter, const char *name) {
+	binding_t *d = getdef(inter->stack[0], name);
 	if (d) {
 		return d->val;
 	}
@@ -276,10 +294,10 @@ tok_t *runcustomfunc(t *inter, binding_t *f, tok_t *args) {
 	for (int i = 0; i < 100; i++) {
 		tok_t *x = body[i];
 		if (!x) break;
-		if (x->type == SYMBOL && !strcmp(x->name, "__end")) {
+		if (x->type == SYMBOL && !strcmp(x->name, "__op_end")) {
 			break;
 		}
-		if (islist(x, "__test_and_jump_if_false")) {
+		if (islist(x, "__op_test_and_jump_if_false")) {
 			if (!eval(inter, x->items[1])) {
 				i += 2; // ok expression + end
 			}
@@ -314,7 +332,7 @@ tok_t *runcustomfunc(t *inter, binding_t *f, tok_t *args) {
 
 // (define x const) defines a constant.
 // (define (f x) body) defines a function.
-tok_t *define(t *inter, tok_t *args) {
+tok_t *fn_define(t *inter, tok_t *args) {
 	tok_t *def = car(args);
 
 	// (define x const)
@@ -722,13 +740,21 @@ pub typedef {
 
 
 tok_t *alloc(t *inter) {
-	for (size_t i = inter->last_alloc; i < inter->poolsize; i++) {
-		if (!inter->in_use[i]) {
-			inter->in_use[i] = true;
-			inter->poolitems[i].mempos = i;
-			inter->last_alloc = i;
-			return &inter->poolitems[i];
+	for (size_t i = 0; i < inter->poolsize; i++) {
+		size_t pos = (inter->last_alloc + i) % inter->poolsize;
+		if (inter->in_use[pos]) {
+			continue;
 		}
+		if (GCDEBUG) {
+			printf("alloc at %zu\n", pos);
+		}
+		inter->in_use[pos] = true;
+		inter->poolitems[pos].mempos = pos;
+		inter->last_alloc = pos;
+		return &inter->poolitems[pos];
+	}
+	if (GCDEBUG) {
+		printf("OOM\n");
 	}
 	return NULL;
 }
@@ -745,47 +771,64 @@ tok_t *make(t *p) {
 	return x;
 }
 
-void gc(t *p) {
-	(void) p;
-	// bitset.t *used = bitset.new(p->poolsize);
-	// printf("depth = %zu\n", p->depth);
-	// for (size_t i = 0; i < p->depth; i++) {
-	// 	scope_t *s = p->stack[i];
-	// 	for (size_t j = 0; j < s->size; j++) {
-	// 		binding_t *b = &s->defs[j];
-	// 		if (b->isfunc) {
-	// 			for (size_t k = 0; k < b->nvals; k++) {
-	// 				gc_mark(used, p, b->vals[k]);
-	// 			}
-	// 		} else {
-	// 			gc_mark(used, p, b->val);
-	// 		}
-	// 	}
-	// }
-	// size_t frees = 0;
-	// for (size_t i = 0; i < p->poolsize; i++) {
-	// 	if (bitset.isset(used, i)) {
-	// 		continue;
-	// 	}
-	// 	p->in_use[i] = false;
-	// 	memset(&p->poolitems[i], 0, sizeof(tok_t));
-	// 	frees++;
-	// }
+pub void gc(t *p) {
+	if (GCDEBUG) {
+		printf("depth = %zu, poolsize=%zu\n", p->depth, p->poolsize);
+	}
+
+	bitset.t *used = bitset.new(p->poolsize);
+
+	for (size_t i = 0; i < p->depth; i++) {
+		if (GCDEBUG) {
+			printf("frame %zu\n-----------\n", i);
+		}
+		scope_t *s = p->stack[i];
+		for (size_t j = 0; j < s->size; j++) {
+			binding_t *b = &s->defs[j];
+			if (GCDEBUG) {
+				printf("%zu: %s\n", j, b->name);
+			}
+			gc_mark(used, p, b->val);
+			if (b->isfunc) {
+				for (size_t k = 0; k < b->nvals; k++) {
+					gc_mark(used, p, b->vals[k]);
+				}
+			}
+		}
+	}
+
+	size_t frees = 0;
+	for (size_t i = 0; i < p->poolsize; i++) {
+		if (!p->in_use[i] || bitset.isset(used, i)) {
+			continue;
+		}
+		if (GCDEBUG) {
+			printf("free %zu: ", i);
+			dbgprint(&p->poolitems[i]);
+		}
+		p->in_use[i] = false;
+		// memset(&p->poolitems[i], 0, sizeof(tok_t));
+		frees++;
+	}
 	// printf("gc: %zu frees\n", frees);
-	// bitset.free(used);
+	bitset.free(used);
 }
 
-// void gc_mark(bitset.t *used, t *inter, tok_t *x) {
-// 	if (!x) {
-// 		return;
-// 	}
-// 	bitset.set(used, x->mempos);
-// 	if (x->type == LIST) {
-// 		for (size_t i = 0; i < x->nitems; i++) {
-// 			gc_mark(used, inter, x->items[i]);
-// 		}
-// 	}
-// }
+void gc_mark(bitset.t *used, t *inter, tok_t *x) {
+	if (!x) {
+		return;
+	}
+	if (GCDEBUG) {
+		printf("mark %zu: ", x->mempos);
+		dbgprint(x);
+	}
+	bitset.set(used, x->mempos);
+	if (x->type == LIST) {
+		for (size_t i = 0; i < x->nitems; i++) {
+			gc_mark(used, inter, x->items[i]);
+		}
+	}
+}
 
 tok_t *newnumber(t *p, const char *val) {
 	tok_t *x = make(p);
@@ -899,13 +942,13 @@ tok_t **compile(t *p, tok_t **in, size_t n) {
 int compile_if(t *p, tok_t *x, tok_t *body[], int added) {
 	// Tests the condition and skips the ok branch if false.
 	tok_t *tst = newlist(p);
-	tst->items[tst->nitems++] = newsym(p, "__test_and_jump_if_false");
+	tst->items[tst->nitems++] = globalget(p, "__test_and_jump_if_false");
 	tst->items[tst->nitems++] = x->items[1];
 	body[added++] = tst;
 
 	// The ok branch with an end marker.
 	body[added++] = x->items[2];
-	body[added++] = newsym(p, "__end");
+	body[added++] = globalget(p, "__end");
 
 	// The else branch.
 	body[added++] = x->items[3];
@@ -920,14 +963,14 @@ int compile_cond(t *p, tok_t *cond, tok_t *body[], int added) {
 		// Tests the condtion and skips the ok expression if false.
 		// Implies that cond values have exactly one expression.
 		tok_t *tst = newlist(p);
-		tst->items[tst->nitems++] = newsym(p, "__test_and_jump_if_false");
+		tst->items[tst->nitems++] = globalget(p, "__test_and_jump_if_false");
 		tst->items[tst->nitems++] = alt->items[0];
 		body[added++] = tst;
 
 		// Value followed by the stop command
 		// (implies that this cond is the last expression)
 		body[added++] = alt->items[1];
-		body[added++] = newsym(p, "__end");
+		body[added++] = globalget(p, "__end");
 	}
 	return added;
 }

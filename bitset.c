@@ -19,7 +19,6 @@ void check_bounds(t *s, size_t i) {
 }
 
 pub void set(t *s, size_t i) {
-    printf("set %zu\n", i);
     check_bounds(s, i);
     s->bytes[i] = 1;
 }

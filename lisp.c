@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	char buf[4096];
-	inter.t *in = inter.new();
+	inter.t *in = inter.new(400000);
 	while (true) {
 		// Read a form.
 		inter.tok_t *x = inter.readtok(in, b);
