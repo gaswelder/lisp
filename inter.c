@@ -19,6 +19,39 @@ pub typedef {
 	size_t last_alloc;
 } vm_t;
 
+// Scope is a list of name->value bindings.
+pub typedef {
+	size_t size;
+	char names[TODOSIZE][TODOSIZE];
+	val_t *vals[TODOSIZE];
+} scope_t;
+
+pub int repl(vm_t *in, FILE *f) {
+	tokenizer.t *b = tokenizer.file(f);
+	char buf[4096];
+	while (true) {
+		// Read a form.
+		val_t *x = readtok(in, b);
+		if (!x) break;
+
+		// Echo.
+		printf("> ");
+		print(x, buf, 4096);
+		puts(buf);
+
+		// Evaluate and print.
+		val_t *r = eval(in, x);
+		if (!islist(x, "define")) {
+			print(r, buf, 4096);
+			puts(buf);
+		}
+	}
+
+	// printf("%zu\n", in->poolsize);
+	tokenizer.free(b);
+	return 0;
+}
+
 enum {
 	LIST = 1,
 	SYMBOL,
@@ -48,12 +81,7 @@ pub typedef {
 	val_t *fn_statements[TODOSIZE];
 } val_t;
 
-// Scope is a list of name->value bindings.
-pub typedef {
-	size_t size;
-	char names[TODOSIZE][TODOSIZE];
-	val_t *vals[TODOSIZE];
-} scope_t;
+
 
 bool GCDEBUG = false;
 
@@ -186,7 +214,7 @@ pub val_t *evalstr(vm_t *inter, const char *s) {
 }
 
 // Evaluates a node.
-pub val_t *eval(vm_t *inter, val_t *x) {
+val_t *eval(vm_t *inter, val_t *x) {
 	if (!x) {
 		panic("eval of NULL");
 	}
@@ -681,7 +709,7 @@ void trace_list_after(vm_t *inter, val_t *r) {
 	dbgprint(r);
 }
 
-pub val_t **readall(vm_t *p, tokenizer.t *b) {
+val_t **readall(vm_t *p, tokenizer.t *b) {
 	val_t **all = calloc(100, sizeof(b));
 	size_t n = 0;
 	while (true) {
@@ -693,7 +721,7 @@ pub val_t **readall(vm_t *p, tokenizer.t *b) {
 }
 
 // Reads next item from the buffer.
-pub val_t *readtok(vm_t *p, tokenizer.t *b) {
+val_t *readtok(vm_t *p, tokenizer.t *b) {
 	tokenizer.spaces(b);
 	if (!tokenizer.more(b)) {
 		return NULL;
@@ -878,7 +906,7 @@ void gc_mark(bitset.t *used, vm_t *inter, val_t *x) {
 	}
 }
 
-pub bool islist(val_t *x, const char *name) {
+bool islist(val_t *x, const char *name) {
 	return x->type == LIST
 		&& x->items[0]->type == SYMBOL
 		&& !strcmp(x->items[0]->name, name);

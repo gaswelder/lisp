@@ -1,2 +1,3 @@
 #!/bin/sh
-che build lisp.test.c a.out && ./a.out "$@"
+che build lisp.test.c a.out && ./a.out "$@" || exit 1
+./run-examples.sh || exit 1

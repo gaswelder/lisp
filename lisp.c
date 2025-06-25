@@ -1,44 +1,21 @@
-#import tokenizer
 #import inter.c
 
 int main(int argc, char *argv[]) {
-	tokenizer.t *b = NULL;
+	FILE *f = NULL;
 	switch (argc) {
-		case 1: { b = tokenizer.stdin(); }
+		case 1: { f = stdin; }
 		case 2: {
-			FILE *f = fopen(argv[1], "r");
+			f = fopen(argv[1], "r");
 			if (!f) {
 				fprintf(stderr, "failed to open %s\n", argv[1]);
 				return 1;
 			}
-			b = tokenizer.file(f);
 		}
 		default: {
 			fprintf(stderr, "arguments: [<file>]\n");
 			return 1;
 		}
 	}
-
-	char buf[4096];
 	inter.vm_t *in = inter.new(400000);
-	while (true) {
-		// Read a form.
-		inter.val_t *x = inter.readtok(in, b);
-		if (!x) break;
-
-		// Echo.
-		printf("> ");
-		inter.print(x, buf, 4096);
-		puts(buf);
-
-		// Evaluate and print.
-		inter.val_t *r = inter.eval(in, x);
-		if (!inter.islist(x, "define")) {
-			inter.print(r, buf, 4096);
-			puts(buf);
-		}
-	}
-
-	// printf("%zu\n", in->poolsize);
-	return 0;
+	return inter.repl(in, f);
 }
