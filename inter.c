@@ -3,6 +3,9 @@
 #import strbuilder
 #import tokenizer
 
+#define TODOSIZE 100
+#define TODOVOIDPSIZE 64
+
 // An instance of the interpreter, with all its internal state.
 pub typedef {
 	bool trace;
@@ -16,27 +19,40 @@ pub typedef {
 	size_t last_alloc;
 } vm_t;
 
-// Represents a single binding.
+enum {
+	LIST = 1,
+	SYMBOL,
+	NUMBER,
+	FUNC,
+};
+
 pub typedef {
-	bool isfunc;
+	size_t mempos; // where in the pool this value is located
 
-	// Name of the function or constant.
-	char name[80];
+	int type;
 
-	// constant:
-	val_t *val;
+	// for number:
+	char *value;
 
-	// function:
-	size_t nargs;
-	char argnames[10][10];
-	size_t nvals;
-	val_t *vals[100];
-} binding_t;
+	// for symbol:
+	char *name;
 
-// Scope is a list of bindings, a call stack frame.
+	// for list:
+	val_t **items;
+	uint8_t nitems;
+
+	// for func:
+	uint8_t fn_nargs;
+	char fn_argnames[10][10];
+	uint8_t fn_nstatements;
+	val_t *fn_statements[TODOSIZE];
+} val_t;
+
+// Scope is a list of name->value bindings.
 pub typedef {
 	size_t size;
-	binding_t defs[100];
+	char names[TODOSIZE][TODOSIZE];
+	val_t *vals[TODOSIZE];
 } scope_t;
 
 bool GCDEBUG = false;
@@ -115,37 +131,37 @@ void pushdef(scope_t *s, const char *name, val_t *val) {
 	if (!name || !val) {
 		panic("name or val is NULL");
 	}
-	if (s->size == 100) {
+	if (s->size == TODOSIZE) {
 		panic("no more space in scope");
 	}
-	strcpy(s->defs[s->size].name, name);
-	s->defs[s->size].val = val;
+	strcpy(s->names[s->size], name);
+	s->vals[s->size] = val;
 	s->size++;
 }
 
-// Returns the binding with name n from scope s.
-// Returns NULL if there is no such binding.
-binding_t *getdef(scope_t *s, const char *n) {
+// Returns the value bound to name n in scope s.
+// Returns NULL if there is no such value.
+val_t *getdef(scope_t *s, const char *n) {
 	if (!n) {
 		panic("n is null");
 	}
-	binding_t *r = NULL;
+	val_t *r = NULL;
 	for (size_t i = 0; i < s->size; i++) {
-		if (!strcmp(n, s->defs[i].name)) {
+		if (!strcmp(n, s->names[i])) {
 			// Don't break because redefinitions can be added further down.
-			r = &s->defs[i];
+			r = s->vals[i];
 		}
 	}
 	return r;
 }
 
-binding_t *lookup(vm_t *inter, const char *n) {
+val_t *lookup(vm_t *inter, const char *n) {
 	if (!n) {
 		panic("n is null");
 	}
 	for (size_t d = 0; d < inter->depth; d++) {
 		scope_t *s = inter->stack[inter->depth - 1 - d];
-		binding_t *r = getdef(s, n);
+		val_t *r = getdef(s, n);
 		if (r) {
 			return r;
 		}
@@ -183,8 +199,8 @@ pub val_t *eval(vm_t *inter, val_t *x) {
 			// If it's defined, use the definition.
 			// If not, keep the symbol as is.
 			val_t *r = x;
-			binding_t *d = lookup(inter, x->name);
-			if (d) r = d->val;
+			val_t *d = lookup(inter, x->name);
+			if (d) r = d;
 			trace_symbol_eval(inter, x, r);
 			return r;
 		}
@@ -193,6 +209,9 @@ pub val_t *eval(vm_t *inter, val_t *x) {
 			val_t *r = eval_list(inter, x);
 			trace_list_after(inter, r);
 			return r;
+		}
+		case FUNC: {
+			return x;
 		}
 		default: {
 			panic("unexpected value type");
@@ -210,8 +229,8 @@ val_t *eval_list(vm_t *inter, val_t *x) {
 	}
 	// At this point we should have a symbol.
 	if (first->type != SYMBOL) {
-		char buf[100];
-		print(first, buf, 100);
+		char buf[TODOSIZE];
+		print(first, buf, TODOSIZE);
 		panic("invalid function invocation: got %s as function", buf);
 	}
 	return runfunc(inter, first->name, cdr(inter, x));
@@ -223,9 +242,10 @@ val_t *runfunc(vm_t *inter, const char *name, val_t *args) {
 		trace_indent(inter->depth);
 		printf("RUN_FUNC: %s\n", name);
 	}
+
 	// See if there is a defined function with this name.
 	// Custom definitions take precedence over the built-ins below.
-	binding_t *f = lookup(inter, name);
+	val_t *f = lookup(inter, name);
 	if (f) {
 		return runcustomfunc(inter, f, args);
 	}
@@ -268,42 +288,44 @@ val_t *fn_globalget(vm_t *inter, val_t *args) {
 }
 
 val_t *globalget(vm_t *inter, const char *name) {
-	binding_t *d = getdef(inter->stack[0], name);
-	if (d) {
-		return d->val;
-	}
-	return NULL;
+	return getdef(inter->stack[0], name);
 }
 
-val_t *runcustomfunc(vm_t *inter, binding_t *f, val_t *args) {
-	if (!f->isfunc) {
-		panic("%s is not a function", f->name);
+val_t *runcustomfunc(vm_t *inter, val_t *f, val_t *args) {
+	if (f->type != FUNC) {
+		panic("not a function");
 	}
 
-	// Check the arguments number
+	// Check the arguments number.
 	size_t nargs = 0;
 	if (args) nargs = args->nitems;
-	if (nargs != f->nargs) {
-		panic("function expects %zu arguments, got %zu", f->nargs, nargs);
+	if (nargs != f->fn_nargs) {
+		panic("function expects %u arguments, got %zu", f->fn_nargs, nargs);
 	}
-
-	// Reformat the function body to have a better handle on execution.
-	val_t **body = compile(inter, f->vals, f->nvals);
 
 	// Create a new scope for the call.
 	scope_t *s2 = newscope();
-	for (size_t i = 0; i < f->nargs; i++) {
-		pushdef(s2, f->argnames[i], eval(inter, args->items[i]));
+	for (size_t i = 0; i < f->fn_nargs; i++) {
+		pushdef(s2, f->fn_argnames[i], eval(inter, args->items[i]));
 	}
 	inter->stack[inter->depth++] = s2;
 
+	// The result of execution will be set here.
 	val_t *r = NULL;
-	for (int i = 0; i < 100; i++) {
+
+	// Reformat the function body to have a better handle on execution
+	// and execute each statement.
+	val_t **body = compile(inter, f->fn_statements, f->fn_nstatements);
+	for (int i = 0; i < TODOSIZE; i++) {
 		val_t *x = body[i];
-		if (!x) break;
-		if (x->type == SYMBOL && !strcmp(x->name, "__op_end")) {
+
+		// No more statements or a special end marker.
+		if (!x || is_symbol(x, "__op_end")) {
 			break;
 		}
+
+		// Conditional jump
+		// (__op_test_and_jump_if_false pred)
 		if (islist(x, "__op_test_and_jump_if_false")) {
 			if (!eval(inter, x->items[1])) {
 				i += 2; // ok expression + end
@@ -311,23 +333,23 @@ val_t *runcustomfunc(vm_t *inter, binding_t *f, val_t *args) {
 			continue;
 		}
 
-		if (islist(x, f->name)) {
-			// Build a new scope such that an honest call would produce.
-			scope_t *s3 = newscope();
-			for (size_t a = 0; a < f->nargs; a++) {
-				pushdef(s3, f->argnames[a], eval(inter, x->items[1+a]));
-			}
+		// if (islist(x, f->name)) {
+		// 	// Build a new scope such that an honest call would produce.
+		// 	scope_t *s3 = newscope();
+		// 	for (size_t a = 0; a < f->nargs; a++) {
+		// 		pushdef(s3, f->argnames[a], eval(inter, x->items[1+a]));
+		// 	}
 
-			// Replace the scope and loop back to the beginning.
-			inter->stack[inter->depth-1] = s3;
-			r = NULL;
-			i = -1;
-			if (inter->trace) {
-				trace_indent(inter->depth);
-				printf("TAIL_RECUR: %s\n", f->name);
-			}
-			continue;
-		}
+		// 	// Replace the scope and loop back to the beginning.
+		// 	inter->stack[inter->depth-1] = s3;
+		// 	r = NULL;
+		// 	i = -1;
+		// 	if (inter->trace) {
+		// 		trace_indent(inter->depth);
+		// 		printf("TAIL_RECUR: %s\n", f->name);
+		// 	}
+		// 	continue;
+		// }
 
 		r = eval(inter, x);
 	}
@@ -337,36 +359,54 @@ val_t *runcustomfunc(vm_t *inter, binding_t *f, val_t *args) {
 	return r;
 }
 
+val_t *first(val_t *x) {
+	return x->items[0];
+}
+
+val_t *second(val_t *x) {
+	return x->items[1];
+}
+
+val_t *slice(vm_t *inter, val_t *x, size_t start) {
+	if (x->type != LIST) {
+		panic("expected a list");
+	}
+	val_t *r = newlist(inter);
+	size_t n = len(x);
+	for (size_t i = start; i < n; i++) {
+		r->items[r->nitems++] = x->items[i];
+	}
+	return r;
+}
+
+size_t len(val_t *x) {
+	if (!x) panic("x is null");
+	if (x->type != LIST) panic("not a list");
+	return x->nitems;
+}
+
 // (define x const) defines a constant.
 // (define (f x) body) defines a function.
 val_t *fn_define(vm_t *inter, val_t *args) {
-	val_t *def = car(args);
+	val_t *name = first(args);
+	scope_t *s = inter->stack[inter->depth-1];
 
 	// (define x const)
-	if (def->type == SYMBOL) {
-		val_t *val = car(cdr(inter, args));
-		scope_t *s = inter->stack[inter->depth-1];
-		pushdef(s, def->name, eval(inter, val));
+	if (name->type == SYMBOL) {
+		if (len(args) != 2) {
+			panic("constant define requires 2 args, got %zu", len(args));
+		}
+		val_t *val = second(args);
+		pushdef(s, name->name, eval(inter, val));
 		return NULL;
 	}
 
 	// (define (twice x) (print x) (foo) (* x 2))
-	if (def->type == LIST) {
-		scope_t *s = inter->stack[inter->depth-1];
-		binding_t *d = &s->defs[s->size++];
-		strcpy(d->name, car(def)->name);
-		d->isfunc = true;
-
-		// Copy arguments
-		for (size_t i = 1; i < def->nitems; i++) {
-			strcpy(d->argnames[d->nargs++], def->items[i]->name);
-		}
-
-		// Copy body expressions
-		for (size_t i = 1; i < args->nitems; i++) {
-			d->vals[d->nvals++] = args->items[i];
-		}
-
+	if (name->type == LIST) {
+		const char *fnname = name->items[0]->name;
+		val_t *defargs = slice(inter, name, 1);
+		val_t *defbody = slice(inter, args, 1);
+		pushdef(s, fnname, newfunc(inter, defargs, defbody));
 		return NULL;
 	}
 
@@ -599,17 +639,6 @@ val_t *cdr(vm_t *inter, val_t *x) {
 	return r;
 }
 
-void printfn(binding_t *f) {
-	printf("fn %s(", f->name);
-	for (size_t i = 0; i < f->nargs; i++) {
-		if (i > 0) printf(" ");
-		printf("%s", f->argnames[i]);
-	}
-	printf(")");
-}
-
-
-
 void trace_indent(size_t depth) {
 	for (size_t i = 0; i < depth; i++) printf("  ");
 }
@@ -629,21 +658,19 @@ void trace_list_before(vm_t *inter, val_t *x) {
 	dbgprint(x);
 }
 
+void print_scope(scope_t *s) {
+	for (size_t i = 0; i < s->size; i++) {
+		printf("[%zu] %s = ", i, s->names[i]);
+		dbgprint(s->vals[i]);
+	}
+	puts("---");
+}
+
 void trace_defs(vm_t *inter) {
 	// -1 to exclude the first scope where built-in definitions are.
 	for (size_t d = 0; d < inter->depth - 1; d++) {
 		scope_t *s = inter->stack[inter->depth - d - 1];
-		for (size_t i = 0; i < s->size; i++) {
-			binding_t *d = &s->defs[i];
-			printf("[%zu] %s = ", i, d->name);
-			if (d->isfunc) {
-				printfn(d);
-				puts("");
-			} else {
-				dbgprint(d->val);
-			}
-		}
-		puts("---");
+		print_scope(s);
 	}
 }
 
@@ -720,30 +747,6 @@ val_t *readlist(vm_t *p, tokenizer.t *b) {
 	return x;
 }
 
-
-enum {
-	// UNKNOWN,
-	LIST = 1,
-	SYMBOL,
-	NUMBER,
-};
-
-pub typedef {
-	size_t mempos;
-
-	int type;
-
-	// for number:
-	char *value;
-
-	// for symbol:
-	char *name;
-
-	// for list:
-	val_t **items;
-	size_t nitems;
-} val_t;
-
 void gc_trace(const char *format, ...) {
 	if (!GCDEBUG) return;
 
@@ -774,6 +777,20 @@ val_t *newsym(vm_t *p, const char *s) {
 	x->type = SYMBOL;
 	x->name = calloc(60, 1);
 	strcpy(x->name, s);
+	return x;
+}
+
+// Creates a function with given args and body.
+// Both args and body must be lists.
+val_t *newfunc(vm_t *inter, val_t *args, val_t *body) {
+	val_t *x = make(inter);
+	x->type = FUNC;
+	for (size_t i = 0; i < args->nitems; i++) {
+		strcpy(x->fn_argnames[x->fn_nargs++], args->items[i]->name);
+	}
+	for (size_t i = 0; i < body->nitems; i++) {
+		x->fn_statements[x->fn_nstatements++] = body->items[i];
+	}
 	return x;
 }
 
@@ -817,14 +834,9 @@ pub void gc(vm_t *inter) {
 		gc_trace("frame %zu\n-----------", i);
 		scope_t *s = inter->stack[i];
 		for (size_t j = 0; j < s->size; j++) {
-			binding_t *b = &s->defs[j];
-			gc_trace("%zu: %s", j, b->name);
-			gc_mark(used, inter, b->val);
-			if (b->isfunc) {
-				for (size_t k = 0; k < b->nvals; k++) {
-					gc_mark(used, inter, b->vals[k]);
-				}
-			}
+			val_t *b = s->vals[j];
+			gc_trace("%zu: %s", j, s->names[j]);
+			gc_mark(used, inter, b);
 		}
 	}
 
@@ -859,12 +871,21 @@ void gc_mark(bitset.t *used, vm_t *inter, val_t *x) {
 			gc_mark(used, inter, x->items[i]);
 		}
 	}
+	if (x->type == FUNC) {
+		for (size_t i = 0; i < x->fn_nstatements; i++) {
+			gc_mark(used, inter, x->fn_statements[i]);
+		}
+	}
 }
 
 pub bool islist(val_t *x, const char *name) {
 	return x->type == LIST
 		&& x->items[0]->type == SYMBOL
 		&& !strcmp(x->items[0]->name, name);
+}
+
+bool is_symbol(val_t *x, const char *name) {
+	return x->type == SYMBOL && !strcmp(x->name, name);
 }
 
 // Prints the given item to stdout for debugging.
@@ -887,12 +908,12 @@ pub void print(val_t *x, char *buf, size_t len) {
 	OS.free(r);
 }
 
+// Prints a display representation of x into s.
 void _print(strbuilder.str *s, val_t *x) {
 	if (!x) {
 		strbuilder.adds(s, "NULL");
 		return;
 	}
-	// strbuilder.addf(s, "#%d ", x->mempos);
 	switch (x->type) {
 		case SYMBOL: {
 			strbuilder.adds(s, x->name);
@@ -910,14 +931,19 @@ void _print(strbuilder.str *s, val_t *x) {
 			}
 			strbuilder.str_addc(s, ')');
 		}
+		case FUNC: {
+			strbuilder.adds(s, "fn (");
+			for (size_t i = 0; i < x->fn_nargs; i++) {
+				if (i > 0) strbuilder.adds(s, " ");
+				strbuilder.adds(s, x->fn_argnames[i]);
+			}
+			strbuilder.adds(s, ") ...");
+		}
 		default: {
 			panic("unknown type");
 		}
 	}
 }
-
-#define TODOSIZE 100
-#define TODOVOIDPSIZE 64
 
 val_t **compile(vm_t *p, val_t **in, size_t n) {
 	val_t **out = calloc(TODOSIZE, TODOVOIDPSIZE);
