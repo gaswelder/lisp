@@ -16,6 +16,6 @@ int main(int argc, char *argv[]) {
 			return 1;
 		}
 	}
-	inter.vm_t *in = inter.new(400000);
+	inter.tt_t *in = inter.new(400000);
 	return inter.repl(in, f);
 }

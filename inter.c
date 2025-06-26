@@ -7,7 +7,7 @@
 #define TODOVOIDPSIZE 64
 
 // An instance of the interpreter, with all its internal state.
-pub typedef {
+typedef {
 	bool trace;
 
 	scope_t *stack[400];
@@ -20,13 +20,53 @@ pub typedef {
 } vm_t;
 
 // Scope is a list of name->value bindings.
-pub typedef {
+typedef {
 	size_t size;
 	char names[TODOSIZE][TODOSIZE];
 	val_t *vals[TODOSIZE];
 } scope_t;
 
-pub int repl(vm_t *in, FILE *f) {
+pub typedef {
+	void *vm;
+} tt_t;
+
+pub tt_t *new(size_t N) {
+	tt_t *t = calloc(1, sizeof(tt_t));
+	t->vm = newvm(N);
+	return t;
+}
+
+// Frees an instance of the interpreter.
+pub void free(tt_t *r) {
+	// Ignore all the rest for now.
+	OS.free(r);
+}
+
+// Parses a string into expressions, evaluates them,
+// and prints results into the buffer out.
+pub void evalstr(tt_t *t, const char *s, char *out, size_t n) {
+	val_t *r = vmevalstr(t->vm, s);
+	print(r, out, n);
+}
+
+val_t *vmevalstr(vm_t *inter, const char *s) {
+	tokenizer.t *b = tokenizer.from_str(s);
+	val_t **all = readall(inter, b);
+	tokenizer.free(b);
+
+	val_t *r = NULL;
+	size_t n = 0;
+	val_t *x = all[n++];
+	while (x) {
+		r = eval(inter, x);
+		x = all[n++];
+	}
+	return r;
+}
+
+pub int repl(tt_t *t, FILE *f) {
+	vm_t *in = t->vm;
+
 	tokenizer.t *b = tokenizer.file(f);
 	char buf[4096];
 	while (true) {
@@ -59,7 +99,7 @@ enum {
 	FUNC,
 };
 
-pub typedef {
+typedef {
 	size_t mempos; // where in the pool this value is located
 
 	int type;
@@ -81,12 +121,20 @@ pub typedef {
 	val_t *fn_statements[TODOSIZE];
 } val_t;
 
+// Prints the given node into the buf.
+void print(val_t *x, char *buf, size_t len) {
+	strbuilder.str *s = strbuilder.str_new();
+	_print(s, x);
+	char *r = strbuilder.str_unpack(s);
+	strncpy(buf, r, len);
+	OS.free(r);
+}
 
 
 bool GCDEBUG = false;
 
 // Creates a new instance of the interpreter.
-pub vm_t *new(size_t N) {
+vm_t *newvm(size_t N) {
 	vm_t *r = calloc(1, sizeof(vm_t));
 	if (!r) panic("calloc failed");
 
@@ -106,14 +154,14 @@ pub vm_t *new(size_t N) {
 
 	// These are special symbols used in compiled bodies for tail recursion.
 	// They are stashed here in globals to keep them from being GC'd.
-	evalstr(r, "(define __end __op_end)");
-	evalstr(r, "(define __test_and_jump_if_false __op_test_and_jump_if_false)");
+	vmevalstr(r, "(define __end __op_end)");
+	vmevalstr(r, "(define __test_and_jump_if_false __op_test_and_jump_if_false)");
 
 	// Scope 1 for predefined things.
 	r->stack[r->depth++] = newscope();
 
 	// Define standard functions.
-	evalstr(r, "
+	vmevalstr(r, "
 (define (inc x) (+ 1 x))
 (define (dec x) (- x 1))
 
@@ -141,11 +189,7 @@ pub vm_t *new(size_t N) {
 	return r;
 }
 
-// Frees an instance of the interpreter.
-pub void free(vm_t *r) {
-	// Ignore all the rest for now.
-	OS.free(r);
-}
+
 
 // Creates a new scope.
 scope_t *newscope() {
@@ -195,22 +239,6 @@ val_t *lookup(vm_t *inter, const char *n) {
 		}
 	}
 	return NULL;
-}
-
-// Parses a string into expressions and evaluates them.
-pub val_t *evalstr(vm_t *inter, const char *s) {
-	tokenizer.t *b = tokenizer.from_str(s);
-	val_t **all = readall(inter, b);
-	tokenizer.free(b);
-
-	val_t *r = NULL;
-	size_t n = 0;
-	val_t *x = all[n++];
-	while (x) {
-		r = eval(inter, x);
-		x = all[n++];
-	}
-	return r;
 }
 
 // Evaluates a node.
@@ -853,7 +881,7 @@ val_t *alloc(vm_t *inter) {
 }
 
 // Runs a full GC cycle.
-pub void gc(vm_t *inter) {
+void gc(vm_t *inter) {
 	gc_trace("gc start: depth=%zu, poolsize=%zu", inter->depth, inter->poolsize);
 
 	bitset.t *used = bitset.new(inter->poolsize);
@@ -927,14 +955,7 @@ void dbgprint(val_t *x) {
 	printf("%s\n", buf);
 }
 
-// Prints the given node into the buf.
-pub void print(val_t *x, char *buf, size_t len) {
-	strbuilder.str *s = strbuilder.str_new();
-	_print(s, x);
-	char *r = strbuilder.str_unpack(s);
-	strncpy(buf, r, len);
-	OS.free(r);
-}
+
 
 // Prints a display representation of x into s.
 void _print(strbuilder.str *s, val_t *x) {

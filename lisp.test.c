@@ -153,9 +153,8 @@ int main(int argc, char **argv) {
 		}
 		case_t c = cases[i];
 
-		inter.vm_t *in = inter.new(1000);
-		inter.val_t *x = inter.evalstr(in, c.in);
-		inter.print(x, buf, 4096);
+		inter.tt_t *in = inter.new(1000);
+		inter.evalstr(in, c.in, buf, 4096);
 		inter.free(in);
 
 		if (!test.streq(buf, c.out)) {
