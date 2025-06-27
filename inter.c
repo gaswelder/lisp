@@ -1,9 +1,9 @@
 #import tokenizer
 #import vm.c
 #import vmread.c
+#import vmcomp.c
 
 #define TODOSIZE 100
-#define TODOVOIDPSIZE 64
 
 const char *STDLIB = "
 (define (inc x) (+ 1 x))
@@ -127,39 +127,6 @@ void pushdef(vm.scope_t *s, const char *name, vm.val_t *val) {
 	s->size++;
 }
 
-// Returns the value bound to name n in scope s.
-// Returns NULL if there is no such value.
-vm.val_t *getdef(vm.scope_t *s, const char *n) {
-	if (!n) {
-		panic("n is null");
-	}
-	vm.val_t *r = NULL;
-	for (size_t i = 0; i < s->size; i++) {
-		if (!strcmp(n, s->names[i])) {
-			// Don't break because redefinitions can be added further down.
-			r = s->vals[i];
-		}
-	}
-	return r;
-}
-
-vm.val_t *globalget(vm.vm_t *inter, const char *name) {
-	return getdef(inter->stack[0], name);
-}
-
-vm.val_t *lookup(vm.vm_t *inter, const char *n) {
-	if (!n) {
-		panic("n is null");
-	}
-	for (size_t d = 0; d < inter->depth; d++) {
-		vm.scope_t *s = inter->stack[inter->depth - 1 - d];
-		vm.val_t *r = getdef(s, n);
-		if (r) {
-			return r;
-		}
-	}
-	return NULL;
-}
 
 // Evaluates a node.
 vm.val_t *eval(vm.vm_t *inter, vm.val_t *x) {
@@ -175,7 +142,7 @@ vm.val_t *eval(vm.vm_t *inter, vm.val_t *x) {
 			// If it's defined, use the definition.
 			// If not, keep the symbol as is.
 			vm.val_t *r = x;
-			vm.val_t *d = lookup(inter, x->name);
+			vm.val_t *d = vm.lookup(inter, x->name);
 			if (d) r = d;
 			trace_symbol_eval(inter, x, r);
 			return r;
@@ -221,7 +188,7 @@ vm.val_t *eval_func(vm.vm_t *inter, const char *name, vm.val_t *args) {
 
 	// See if there is a defined function with this name.
 	// Custom definitions take precedence over the built-ins below.
-	vm.val_t *f = lookup(inter, name);
+	vm.val_t *f = vm.lookup(inter, name);
 	if (f) {
 		return runcustomfunc(inter, f, args);
 	}
@@ -252,7 +219,7 @@ vm.val_t *runcustomfunc(vm.vm_t *inter, vm.val_t *f, vm.val_t *args) {
 
 	// Reformat the function body to have a better handle on execution
 	// and execute each statement.
-	vm.val_t **body = compile(inter, f->fn_statements, f->fn_nstatements);
+	vm.val_t **body = vmcomp.compile(inter, f->fn_statements, f->fn_nstatements);
 	for (int i = 0; i < TODOSIZE; i++) {
 		vm.val_t *x = body[i];
 
@@ -296,6 +263,8 @@ vm.val_t *runcustomfunc(vm.vm_t *inter, vm.val_t *f, vm.val_t *args) {
 	return r;
 }
 
+
+
 vm.val_t *run_builtin_func(vm.vm_t *inter, const char *name, vm.val_t *args) {
 	switch str (name) {
 		case "quote": { return fn_quote(args); }
@@ -334,7 +303,7 @@ vm.val_t *fn_globalset(vm.vm_t *inter, vm.val_t *args) {
 
 vm.val_t *fn_globalget(vm.vm_t *inter, vm.val_t *args) {
 	vm.val_t *name = args->items[0];
-	return globalget(inter, name->name);
+	return vm.globalget(inter, name->name);
 }
 
 // (define x const) defines a constant.
@@ -621,60 +590,3 @@ bool is_symbol(vm.val_t *x, const char *name) {
 	return x->type == vm.SYMBOL && !strcmp(x->name, name);
 }
 
-vm.val_t **compile(vm.vm_t *p, vm.val_t **in, size_t n) {
-	vm.val_t **out = calloc(TODOSIZE, TODOVOIDPSIZE);
-	int pos = 0;
-
-	for (size_t i = 0; i < n; i++) {
-		vm.val_t *x = in[i];
-
-		// Flatten tail ifs so the interpreter can attempt a tail recursion.
-		if (i == n - 1 && islist(x, "if")) {
-			pos = compile_if(p, x, out, pos);
-			continue;
-		}
-		if (i == n - 1 && islist(x, "cond")) {
-			pos = compile_cond(p, x, out, pos);
-			continue;
-		}
-		out[pos++] = x;
-	}
-
-	return out;
-}
-
-int compile_if(vm.vm_t *p, vm.val_t *x, vm.val_t *body[], int added) {
-	// Tests the condition and skips the ok branch if false.
-	vm.val_t *tst = vm.newlist(p);
-	tst->items[tst->nitems++] = globalget(p, "__test_and_jump_if_false");
-	tst->items[tst->nitems++] = x->items[1];
-	body[added++] = tst;
-
-	// The ok branch with an end marker.
-	body[added++] = x->items[2];
-	body[added++] = globalget(p, "__end");
-
-	// The else branch.
-	body[added++] = x->items[3];
-
-	return added;
-}
-
-int compile_cond(vm.vm_t *p, vm.val_t *cond, vm.val_t *body[], int added) {
-	for (size_t i = 1; i < cond->nitems; i++) {
-		vm.val_t *alt = cond->items[i];
-
-		// Tests the condtion and skips the ok expression if false.
-		// Implies that cond values have exactly one expression.
-		vm.val_t *tst = vm.newlist(p);
-		tst->items[tst->nitems++] = globalget(p, "__test_and_jump_if_false");
-		tst->items[tst->nitems++] = alt->items[0];
-		body[added++] = tst;
-
-		// Value followed by the stop command
-		// (implies that this cond is the last expression)
-		body[added++] = alt->items[1];
-		body[added++] = globalget(p, "__end");
-	}
-	return added;
-}

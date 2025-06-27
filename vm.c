@@ -79,6 +79,40 @@ pub scope_t *newscope() {
 	return s;
 }
 
+// Returns the value bound to name n in scope s.
+// Returns NULL if there is no such value.
+val_t *getdef(scope_t *s, const char *n) {
+	if (!n) {
+		panic("n is null");
+	}
+	val_t *r = NULL;
+	for (size_t i = 0; i < s->size; i++) {
+		if (!strcmp(n, s->names[i])) {
+			// Don't break because redefinitions can be added further down.
+			r = s->vals[i];
+		}
+	}
+	return r;
+}
+
+pub val_t *globalget(vm_t *inter, const char *name) {
+	return getdef(inter->stack[0], name);
+}
+
+pub val_t *lookup(vm_t *inter, const char *n) {
+	if (!n) {
+		panic("n is null");
+	}
+	for (size_t d = 0; d < inter->depth; d++) {
+		scope_t *s = inter->stack[inter->depth - 1 - d];
+		val_t *r = getdef(s, n);
+		if (r) {
+			return r;
+		}
+	}
+	return NULL;
+}
+
 // Returns the first item of the list x.
 pub val_t *car(val_t *x) {
 	if (x->type != LIST || x->nitems == 0) {
