@@ -79,6 +79,29 @@ pub scope_t *newscope() {
 	return s;
 }
 
+// Adds a binding to the current scope.
+pub void pushdef(vm_t *inter, const char *name, val_t *val) {
+	if (!name || !val) {
+		panic("name or val is NULL");
+	}
+    scope_t *s = inter->stack[inter->depth-1];
+	if (s->size == TODOSIZE) {
+		panic("no more space in scope");
+	}
+	strcpy(s->names[s->size], name);
+	s->vals[s->size] = val;
+	s->size++;
+}
+
+pub scope_t *pushscope(vm_t *inter) {
+    if (inter->depth == 400) {
+        panic("stack limit reached");
+    }
+    scope_t *s = newscope();
+	inter->stack[inter->depth++] = s;
+    return s;
+}
+
 // Returns the value bound to name n in scope s.
 // Returns NULL if there is no such value.
 val_t *getdef(scope_t *s, const char *n) {

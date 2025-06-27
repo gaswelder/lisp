@@ -208,11 +208,10 @@ vm.val_t *runcustomfunc(vm.vm_t *inter, vm.val_t *f, vm.val_t *args) {
 	}
 
 	// Create a new scope for the call.
-	vm.scope_t *s2 = vm.newscope();
+	vm.pushscope(inter);
 	for (size_t i = 0; i < f->fn_nargs; i++) {
-		pushdef(s2, f->fn_argnames[i], eval(inter, args->items[i]));
+		vm.pushdef(inter, f->fn_argnames[i], eval(inter, args->items[i]));
 	}
-	inter->stack[inter->depth++] = s2;
 
 	// The result of execution will be set here.
 	vm.val_t *r = NULL;
@@ -310,7 +309,6 @@ vm.val_t *fn_globalget(vm.vm_t *inter, vm.val_t *args) {
 // (define (f x) body) defines a function.
 vm.val_t *fn_define(vm.vm_t *inter, vm.val_t *args) {
 	vm.val_t *name = vm.first(args);
-	vm.scope_t *s = inter->stack[inter->depth-1];
 
 	// (define x const)
 	if (name->type == vm.SYMBOL) {
@@ -318,7 +316,7 @@ vm.val_t *fn_define(vm.vm_t *inter, vm.val_t *args) {
 			panic("constant define requires 2 args, got %zu", vm.len(args));
 		}
 		vm.val_t *val = vm.second(args);
-		pushdef(s, name->name, eval(inter, val));
+		vm.pushdef(inter, name->name, eval(inter, val));
 		return NULL;
 	}
 
@@ -327,7 +325,7 @@ vm.val_t *fn_define(vm.vm_t *inter, vm.val_t *args) {
 		const char *fnname = name->items[0]->name;
 		vm.val_t *defargs = vm.slice(inter, name, 1);
 		vm.val_t *defbody = vm.slice(inter, args, 1);
-		pushdef(s, fnname, vm.newfunc(inter, defargs, defbody));
+		vm.pushdef(inter, fnname, vm.newfunc(inter, defargs, defbody));
 		return NULL;
 	}
 
