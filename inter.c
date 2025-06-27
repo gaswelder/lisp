@@ -244,7 +244,7 @@ vm.val_t *runcustomfunc(vm.vm_t *inter, vm.val_t *f, vm.val_t *args) {
 		// If this is the last statement
 		// and a call to the same function,
 		// do a tail recursion.
-		if (body[i+1] == NULL
+		if ((body[i+1] == NULL || is_symbol(body[i+1], "__op_end"))
 			&& x->type == vm.LIST
 			&& vm.car(x)->type == vm.SYMBOL
 			&& vm.lookup(inter, x->items[0]->name) == f
