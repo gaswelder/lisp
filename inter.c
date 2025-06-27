@@ -1,5 +1,6 @@
 #import tokenizer
 #import vm.c
+#import vmread.c
 
 #define TODOSIZE 100
 #define TODOVOIDPSIZE 64
@@ -34,7 +35,7 @@ pub int repl(tt_t *t, FILE *f) {
 	char buf[4096];
 	while (true) {
 		// Read a form.
-		vm.val_t *x = readtok(in, b);
+		vm.val_t *x = vmread.readtok(in, b);
 		if (!x) break;
 
 		// Echo.
@@ -55,12 +56,8 @@ pub int repl(tt_t *t, FILE *f) {
 	return 0;
 }
 
-
 vm.val_t *vmevalstr(vm.vm_t *inter, const char *s) {
-	tokenizer.t *b = tokenizer.from_str(s);
-	vm.val_t **all = readall(inter, b);
-	tokenizer.free(b);
-
+	vm.val_t **all = vmread.readall(inter, s);
 	vm.val_t *r = NULL;
 	size_t n = 0;
 	vm.val_t *x = all[n++];
@@ -144,6 +141,10 @@ vm.val_t *getdef(vm.scope_t *s, const char *n) {
 	return r;
 }
 
+vm.val_t *globalget(vm.vm_t *inter, const char *name) {
+	return getdef(inter->stack[0], name);
+}
+
 vm.val_t *lookup(vm.vm_t *inter, const char *n) {
 	if (!n) {
 		panic("n is null");
@@ -206,11 +207,11 @@ vm.val_t *eval_list(vm.vm_t *inter, vm.val_t *x) {
 		vm.print(first, buf, TODOSIZE);
 		panic("invalid function invocation: got %s as function", buf);
 	}
-	return runfunc(inter, first->name, vm.cdr(inter, x));
+	return eval_func(inter, first->name, vm.cdr(inter, x));
 }
 
-// Runs a function.
-vm.val_t *runfunc(vm.vm_t *inter, const char *name, vm.val_t *args) {
+// Evaluates a function node.
+vm.val_t *eval_func(vm.vm_t *inter, const char *name, vm.val_t *args) {
 	if (inter->trace) {
 		trace_indent(inter->depth);
 		printf("RUN_FUNC: %s\n", name);
@@ -223,10 +224,6 @@ vm.val_t *runfunc(vm.vm_t *inter, const char *name, vm.val_t *args) {
 		return runcustomfunc(inter, f, args);
 	}
 	return run_builtin_func(inter, name, args);
-}
-
-vm.val_t *globalget(vm.vm_t *inter, const char *name) {
-	return getdef(inter->stack[0], name);
 }
 
 vm.val_t *runcustomfunc(vm.vm_t *inter, vm.val_t *f, vm.val_t *args) {
@@ -431,7 +428,7 @@ vm.val_t *fn_apply(vm.vm_t *inter, vm.val_t *list) {
 		vm.dbgprint(list);
 		panic("first element is a non-symbol");
 	}
-	return runfunc(inter, fn->name, eval(inter, vm.car(vm.cdr(inter, list))));
+	return eval_func(inter, fn->name, eval(inter, vm.car(vm.cdr(inter, list))));
 }
 
 // (* a b) returns a * b
@@ -610,72 +607,6 @@ void trace_list_after(vm.vm_t *inter, vm.val_t *r) {
 	trace_indent(inter->depth);
 	printf("result: ");
 	vm.dbgprint(r);
-}
-
-vm.val_t **readall(vm.vm_t *p, tokenizer.t *b) {
-	vm.val_t **all = calloc(100, sizeof(b));
-	size_t n = 0;
-	while (true) {
-		vm.val_t *t = readtok(p, b);
-		if (!t) break;
-		all[n++] = t;
-	}
-	return all;
-}
-
-// Reads next item from the buffer.
-vm.val_t *readtok(vm.vm_t *p, tokenizer.t *b) {
-	tokenizer.spaces(b);
-	if (!tokenizer.more(b)) {
-		return NULL;
-	}
-	if (tokenizer.peek(b) == '(') {
-		return readlist(p, b);
-	}
-	if (isdigit(tokenizer.peek(b))) {
-		return readnum(p, b);
-	}
-	return readsymbol(p, b);
-}
-
-// Reads a number.
-vm.val_t *readnum(vm.vm_t *p, tokenizer.t *b) {
-	char buf[100];
-	if (!tokenizer.num(b, buf, 100)) {
-		panic("failed to read a number");
-	}
-	return vm.newnumber(p, buf);
-}
-
-// Reads a symbol.
-vm.val_t *readsymbol(vm.vm_t *p, tokenizer.t *b) {
-	vm.val_t *x = vm.newsym(p, "");
-	int pos = 0;
-	while (tokenizer.more(b) && !isspace(tokenizer.peek(b)) && tokenizer.peek(b) != ')') {
-		x->name[pos++] = tokenizer.get(b);
-	}
-	if (pos == 0) {
-		panic("failed to read symbol at %s", tokenizer.posstr(b));
-	}
-	return x;
-}
-
-
-// Reads a list.
-vm.val_t *readlist(vm.vm_t *p, tokenizer.t *b) {
-	vm.val_t *x = vm.newlist(p);
-
-	tokenizer.get(b); // "("
-	tokenizer.spaces(b);
-	while (tokenizer.peek(b) != EOF && tokenizer.peek(b) != ')') {
-		x->items[x->nitems++] = readtok(p, b);
-		tokenizer.spaces(b);
-	}
-	if (tokenizer.peek(b) != ')') {
-		panic("expected )");
-	}
-	tokenizer.get(b); // ")"
-	return x;
 }
 
 bool islist(vm.val_t *x, const char *name) {
