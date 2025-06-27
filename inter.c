@@ -5,6 +5,29 @@
 #define TODOSIZE 100
 #define TODOVOIDPSIZE 64
 
+const char *STDLIB = "
+(define (inc x) (+ 1 x))
+(define (dec x) (- x 1))
+
+(define (floor-iter x n)
+    (if (> (inc n) x) n (floor-iter x (inc n))))
+
+(define (floor x)
+    (if (> x 0)
+        (floor-iter x 0)
+        (- (inc (floor (- x))))))
+
+(define (ceil x) (+ 1 (floor x)))
+
+(define (square x) (* x x))
+
+(define (abs x) (if (> x 0) x (- x)))
+
+(define (remainder x n) (- x (* n (floor (/ x n)))))
+
+(define (even? n) (= (remainder n 2) 0))
+";
+
 pub typedef {
 	void *vm;
 } tt_t;
@@ -84,28 +107,7 @@ vm.vm_t *newvm(size_t N) {
 	r->stack[r->depth++] = vm.newscope();
 
 	// Define standard functions.
-	vmevalstr(r, "
-(define (inc x) (+ 1 x))
-(define (dec x) (- x 1))
-
-(define (floor-iter x n)
-    (if (> (inc n) x) n (floor-iter x (inc n))))
-
-(define (floor x)
-    (if (> x 0)
-        (floor-iter x 0)
-        (- (inc (floor (- x))))))
-
-(define (ceil x) (+ 1 (floor x)))
-
-(define (square x) (* x x))
-
-(define (abs x) (if (> x 0) x (- x)))
-
-(define (remainder x n) (- x (* n (floor (/ x n)))))
-
-(define (even? n) (= (remainder n 2) 0))
-");
+	vmevalstr(r, STDLIB);
 
 	// A clean scope on top for user programs.
 	r->stack[r->depth++] = vm.newscope();
