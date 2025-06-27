@@ -142,7 +142,7 @@ vm.val_t *eval(vm.vm_t *inter, vm.val_t *x) {
 			// If it's defined, use the definition.
 			// If not, keep the symbol as is.
 			vm.val_t *r = x;
-			vm.val_t *d = vm.lookup(inter, x->name);
+			vm.val_t *d = vm.lookup(inter, x->sym.name);
 			if (d) r = d;
 			trace_symbol_eval(inter, x, r);
 			return r;
@@ -176,7 +176,7 @@ vm.val_t *eval_list(vm.vm_t *inter, vm.val_t *x) {
 		vm.print(first, buf, TODOSIZE);
 		panic("invalid function invocation: got %s as function", buf);
 	}
-	return eval_func(inter, first->name, vm.cdr(inter, x));
+	return eval_func(inter, first->sym.name, vm.cdr(inter, x));
 }
 
 // Evaluates a function node.
@@ -202,20 +202,20 @@ vm.val_t *runcustomfunc(vm.vm_t *inter, vm.val_t *f, vm.val_t *args) {
 
 	// Check the arguments number.
 	size_t nargs = 0;
-	if (args) nargs = args->nitems;
-	if (nargs != f->fn_nargs) {
-		panic("function expects %u arguments, got %zu", f->fn_nargs, nargs);
+	if (args) nargs = args->list.size;
+	if (nargs != f->fn.nargs) {
+		panic("function expects %u arguments, got %zu", f->fn.nargs, nargs);
 	}
 
 	// Create a new scope for the call.
 	// Be careful not to push on stack until the whole scope is done.
 	vm.val_t *vargs[100];
-	for (size_t i = 0; i < f->fn_nargs; i++) {
-		vargs[i] = eval(inter, args->items[i]);
+	for (size_t i = 0; i < f->fn.nargs; i++) {
+		vargs[i] = eval(inter, args->list.items[i]);
 	}
 	vm.pushscope(inter);
-	for (size_t i = 0; i < f->fn_nargs; i++) {
-		vm.pushdef(inter, f->fn_argnames[i], vargs[i]);
+	for (size_t i = 0; i < f->fn.nargs; i++) {
+		vm.pushdef(inter, f->fn.argnames[i], vargs[i]);
 	}
 
 	// The result of execution will be set here.
@@ -223,7 +223,7 @@ vm.val_t *runcustomfunc(vm.vm_t *inter, vm.val_t *f, vm.val_t *args) {
 
 	// Reformat the function body to have a better handle on execution
 	// and execute each statement.
-	vm.val_t **body = vmcomp.compile(inter, f->fn_statements, f->fn_nstatements);
+	vm.val_t **body = vmcomp.compile(inter, f->fn.statements, f->fn.nstatements);
 	for (int i = 0; i < TODOSIZE; i++) {
 		vm.val_t *x = body[i];
 
@@ -235,7 +235,7 @@ vm.val_t *runcustomfunc(vm.vm_t *inter, vm.val_t *f, vm.val_t *args) {
 		// Conditional jump
 		// (__op_test_and_jump_if_false pred)
 		if (islist(x, "__op_test_and_jump_if_false")) {
-			if (!eval(inter, x->items[1])) {
+			if (!eval(inter, x->list.items[1])) {
 				i += 2; // ok expression + end
 			}
 			continue;
@@ -247,19 +247,19 @@ vm.val_t *runcustomfunc(vm.vm_t *inter, vm.val_t *f, vm.val_t *args) {
 		if ((body[i+1] == NULL || is_symbol(body[i+1], "__op_end"))
 			&& x->type == vm.LIST
 			&& vm.car(x)->type == vm.SYMBOL
-			&& vm.lookup(inter, x->items[0]->name) == f
+			&& vm.lookup(inter, x->list.items[0]->sym.name) == f
 		) {
 			// Build a new scope like an new call would produce.
 			// It has to be built in isolation and only then added to the stack.
 			vm.val_t *newargsv[10];
 			vm.val_t *newargs = vm.cdr(inter, x);
-			for (size_t i = 0; i < f->fn_nargs; i++) {
-				newargsv[i] = eval(inter, newargs->items[i]);
+			for (size_t i = 0; i < f->fn.nargs; i++) {
+				newargsv[i] = eval(inter, newargs->list.items[i]);
 			}
 			vm.popscope(inter);
 			vm.pushscope(inter);
-			for (size_t i = 0; i < f->fn_nargs; i++) {
-				vm.pushdef(inter, f->fn_argnames[i], newargsv[i]);
+			for (size_t i = 0; i < f->fn.nargs; i++) {
+				vm.pushdef(inter, f->fn.argnames[i], newargsv[i]);
 			}
 
 			// Start the loop from the beginning with the new scope.
@@ -267,7 +267,7 @@ vm.val_t *runcustomfunc(vm.vm_t *inter, vm.val_t *f, vm.val_t *args) {
 			i = -1;
 			if (inter->trace) {
 				trace_indent(inter->depth);
-				printf("TAIL_RECUR: %s\n", f->name);
+				printf("TAIL_RECUR: %s\n", f->sym.name);
 			}
 			continue;
 		}
@@ -312,15 +312,15 @@ vm.val_t *fn_quote(vm.val_t *args) {
 }
 
 vm.val_t *fn_globalset(vm.vm_t *inter, vm.val_t *args) {
-	vm.val_t *name = args->items[0];
-	vm.val_t *val = eval(inter, args->items[1]);
-	pushdef(inter->stack[0], name->name, val);
+	vm.val_t *name = args->list.items[0];
+	vm.val_t *val = eval(inter, args->list.items[1]);
+	pushdef(inter->stack[0], name->sym.name, val);
 	return NULL;
 }
 
 vm.val_t *fn_globalget(vm.vm_t *inter, vm.val_t *args) {
-	vm.val_t *name = args->items[0];
-	return vm.globalget(inter, name->name);
+	vm.val_t *name = args->list.items[0];
+	return vm.globalget(inter, name->sym.name);
 }
 
 // (define x const) defines a constant.
@@ -334,13 +334,13 @@ vm.val_t *fn_define(vm.vm_t *inter, vm.val_t *args) {
 			panic("constant define requires 2 args, got %zu", vm.len(args));
 		}
 		vm.val_t *val = vm.second(args);
-		vm.pushdef(inter, name->name, eval(inter, val));
+		vm.pushdef(inter, name->sym.name, eval(inter, val));
 		return NULL;
 	}
 
 	// (define (twice x) (print x) (foo) (* x 2))
 	if (name->type == vm.LIST) {
-		const char *fnname = name->items[0]->name;
+		const char *fnname = name->list.items[0]->sym.name;
 		vm.val_t *defargs = vm.slice(inter, name, 1);
 		vm.val_t *defbody = vm.slice(inter, args, 1);
 		vm.pushdef(inter, fnname, vm.newfunc(inter, defargs, defbody));
@@ -381,7 +381,7 @@ vm.val_t *fn_if(vm.vm_t *inter, vm.val_t *args) {
 	if (eval(inter, pred)) {
 		return eval(inter, ethen);
 	}
-	if (args->nitems < 3) {
+	if (args->list.size < 3) {
 		return NULL;
 	}
 	vm.val_t *eelse = vm.car(vm.cdr(inter, vm.cdr(inter, args)));
@@ -391,8 +391,8 @@ vm.val_t *fn_if(vm.vm_t *inter, vm.val_t *args) {
 // (and a b c) returns c if a, b and c are not null.
 // Returns null otherwise.
 vm.val_t *fn_and(vm.vm_t *inter, vm.val_t *args) {
-	for (size_t i = 0; i < args->nitems; i++) {
-		if (!eval(inter, args->items[i])) {
+	for (size_t i = 0; i < args->list.size; i++) {
+		if (!eval(inter, args->list.items[i])) {
 			return NULL;
 		}
 	}
@@ -401,8 +401,8 @@ vm.val_t *fn_and(vm.vm_t *inter, vm.val_t *args) {
 
 // (or a b c) returns the first non-null argument or null.
 vm.val_t *fn_or(vm.vm_t *inter, vm.val_t *args) {
-	for (size_t i = 0; i < args->nitems; i++) {
-		if (eval(inter, args->items[i])) {
+	for (size_t i = 0; i < args->list.size; i++) {
+		if (eval(inter, args->list.items[i])) {
 			return vm.newsym(inter, "true");
 		}
 	}
@@ -415,7 +415,7 @@ vm.val_t *fn_apply(vm.vm_t *inter, vm.val_t *list) {
 		vm.dbgprint(list);
 		panic("first element is a non-symbol");
 	}
-	return eval_func(inter, fn->name, eval(inter, vm.car(vm.cdr(inter, list))));
+	return eval_func(inter, fn->sym.name, eval(inter, vm.car(vm.cdr(inter, list))));
 }
 
 // (* a b) returns a * b
@@ -437,15 +437,15 @@ vm.val_t *fn_sub(vm.vm_t *inter, vm.val_t *args) {
 	char buf[100];
 
 	vm.val_t *a = eval(inter, vm.car(args));
-	if (args->nitems == 1) {
-		printnum(buf, -atof(a->value));
+	if (args->list.size == 1) {
+		printnum(buf, -atof(a->num.value));
 		return vm.newnumber(inter, buf);
 	}
 	vm.val_t *b = eval(inter, vm.car(vm.cdr(inter, args)));
 	if (a->type != vm.NUMBER || b->type != vm.NUMBER) {
 		panic("not a number");
 	}
-	printnum(buf, atof(a->value) - atof(b->value));
+	printnum(buf, atof(a->num.value) - atof(b->num.value));
 	return vm.newnumber(inter, buf);
 }
 
@@ -458,14 +458,14 @@ vm.val_t *fn_over(vm.vm_t *inter, vm.val_t *args) {
 		panic("/: an argument is not a number");
 	}
 	char buf[100];
-	printnum(buf, atof(a->value) / atof(b->value));
+	printnum(buf, atof(a->num.value) / atof(b->num.value));
 	return vm.newnumber(inter, buf);
 }
 
 vm.val_t *fn_numeq(vm.vm_t *inter, vm.val_t *args) {
 	vm.val_t *a = eval(inter, vm.car(args));
 	vm.val_t *b = eval(inter, vm.car(vm.cdr(inter, args)));
-	if (atof(a->value) == atof(b->value)) {
+	if (atof(a->num.value) == atof(b->num.value)) {
 		return vm.newsym(inter, "true");
 	}
 	return NULL;
@@ -482,8 +482,8 @@ vm.val_t *fn_eq(vm.vm_t *inter, vm.val_t *args) {
 	}
 	bool same = false;
 	switch (a->type) {
-		case vm.SYMBOL: { same = !strcmp(a->name, b->name); }
-		case vm.NUMBER: { same = !strcmp(a->value, b->value); }
+		case vm.SYMBOL: { same = !strcmp(a->sym.name, b->sym.name); }
+		case vm.NUMBER: { same = !strcmp(a->num.value, b->num.value); }
 		default: {
 			panic("unhandled item type: %d", a->type);
 		}
@@ -498,7 +498,7 @@ vm.val_t *fn_eq(vm.vm_t *inter, vm.val_t *args) {
 vm.val_t *fn_gt(vm.vm_t *inter, vm.val_t *args) {
 	vm.val_t *a = eval(inter, vm.car(args));
 	vm.val_t *b = eval(inter, vm.car(vm.cdr(inter, args)));
-	if (atof(a->value) > atof(b->value)) {
+	if (atof(a->num.value) > atof(b->num.value)) {
 		return vm.newsym(inter, "true");
 	}
 	return NULL;
@@ -508,7 +508,7 @@ vm.val_t *fn_gt(vm.vm_t *inter, vm.val_t *args) {
 vm.val_t *fn_lt(vm.vm_t *inter, vm.val_t *args) {
 	vm.val_t *a = eval(inter, vm.car(args));
 	vm.val_t *b = eval(inter, vm.car(vm.cdr(inter, args)));
-	if (atof(a->value) < atof(b->value)) {
+	if (atof(a->num.value) < atof(b->num.value)) {
 		return vm.newsym(inter, "true");
 	}
 	return NULL;
@@ -520,9 +520,9 @@ vm.val_t *fn_cons(vm.vm_t *inter, vm.val_t *args) {
 	vm.val_t *tail = vm.car(vm.cdr(inter, args));
 
 	vm.val_t *r = vm.newlist(inter);
-	r->items[r->nitems++] = head;
-	for (size_t i = 0; i < tail->nitems; i++) {
-		r->items[r->nitems++] = tail->items[i];
+	r->list.items[r->list.size++] = head;
+	for (size_t i = 0; i < tail->list.size; i++) {
+		r->list.items[r->list.size++] = tail->list.items[i];
 	}
 	return r;
 }
@@ -535,16 +535,16 @@ double reduce(vm.vm_t *inter, vm.val_t *args, double start, int op) {
 	if (args->type != vm.LIST) {
 		panic("not a list");
 	}
-	if (args->nitems < 2) {
+	if (args->list.size < 2) {
 		panic("want 2 or more arguments");
 	}
 	double r = start;
-	for (size_t i = 0; i < args->nitems; i++) {
-		vm.val_t *x = eval(inter, args->items[i]);
+	for (size_t i = 0; i < args->list.size; i++) {
+		vm.val_t *x = eval(inter, args->list.items[i]);
 		if (x->type != vm.NUMBER) {
 			panic("not a number");
 		}
-		double next = atof(x->value);
+		double next = atof(x->num.value);
 		switch (op) {
 			case 1: { r *= next; }
 			case 2: { r += next; }
@@ -561,7 +561,7 @@ void trace_indent(size_t depth) {
 void trace_symbol_eval(vm.vm_t *inter, vm.val_t *x, *r) {
 	if (!inter->trace) return;
 	trace_indent(inter->depth);
-	printf("EVAL_SYM %s: ", x->name);
+	printf("EVAL_SYM %s: ", x->sym.name);
 	vm.dbgprint(r);
 }
 
@@ -598,11 +598,11 @@ void trace_list_after(vm.vm_t *inter, vm.val_t *r) {
 
 bool islist(vm.val_t *x, const char *name) {
 	return x->type == vm.LIST
-		&& x->items[0]->type == vm.SYMBOL
-		&& !strcmp(x->items[0]->name, name);
+		&& x->list.items[0]->type == vm.SYMBOL
+		&& !strcmp(x->list.items[0]->sym.name, name);
 }
 
 bool is_symbol(vm.val_t *x, const char *name) {
-	return x->type == vm.SYMBOL && !strcmp(x->name, name);
+	return x->type == vm.SYMBOL && !strcmp(x->sym.name, name);
 }
 

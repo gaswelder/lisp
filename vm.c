@@ -33,25 +33,34 @@ pub enum {
 };
 
 pub typedef {
-	size_t mempos; // where in the pool this value is located
-
-	int type;
-
-	// for number:
-	char *value;
-
-	// for symbol:
-	char *name;
-
-	// for list:
 	val_t **items;
-	uint8_t nitems;
+	uint8_t size;
+} listval_t;
 
-	// for func:
-	uint8_t fn_nargs;
-	char fn_argnames[10][10];
-	uint8_t fn_nstatements;
-	val_t *fn_statements[TODOSIZE];
+pub typedef {
+	char name[TODOSIZE];
+} symval_t;
+
+pub typedef {
+	uint8_t nargs;
+	char argnames[10][10];
+	uint8_t nstatements;
+	val_t *statements[TODOSIZE];
+} fnval_t;
+
+pub typedef {
+	char value[TODOSIZE];
+} numval_t;
+
+pub typedef {
+	size_t mempos; // where in the pool this value is located
+	int type; // Value type, decides the payload
+
+	// payload
+	numval_t num;
+	symval_t sym;
+	listval_t list;
+	fnval_t fn;
 } val_t;
 
 pub vm_t *newvm(size_t N) {
@@ -72,6 +81,10 @@ pub vm_t *newvm(size_t N) {
 	return r;
 }
 
+//
+// Scopes
+//
+
 // Creates a new scope.
 pub scope_t *newscope() {
 	scope_t *s = calloc(1, sizeof(scope_t));
@@ -79,12 +92,28 @@ pub scope_t *newscope() {
 	return s;
 }
 
+pub void pushscope(vm_t *inter) {
+	if (inter->depth == 400) {
+		panic("stack limit reached");
+	}
+	scope_t *s = newscope();
+	inter->stack[inter->depth++] = s;
+}
+
+pub void popscope(vm_t *inter) {
+	if (inter->depth == 0) {
+		panic("stack is empty");
+	}
+	inter->depth--;
+	OS.free(inter->stack[inter->depth]);
+}
+
 // Adds a binding to the current scope.
 pub void pushdef(vm_t *inter, const char *name, val_t *val) {
 	if (!name || !val) {
 		panic("name or val is NULL");
 	}
-    scope_t *s = inter->stack[inter->depth-1];
+	scope_t *s = inter->stack[inter->depth-1];
 	if (s->size == TODOSIZE) {
 		panic("no more space in scope");
 	}
@@ -93,21 +122,18 @@ pub void pushdef(vm_t *inter, const char *name, val_t *val) {
 	s->size++;
 }
 
-pub scope_t *pushscope(vm_t *inter) {
-    if (inter->depth == 400) {
-        panic("stack limit reached");
-    }
-    scope_t *s = newscope();
-	inter->stack[inter->depth++] = s;
-    return s;
-}
-
-pub void popscope(vm_t *inter) {
-    if (inter->depth == 0) {
-        panic("stack is empty");
-    }
-    inter->depth--;
-    OS.free(inter->stack[inter->depth]);
+pub val_t *lookup(vm_t *inter, const char *n) {
+	if (!n) {
+		panic("n is null");
+	}
+	for (size_t d = 0; d < inter->depth; d++) {
+		scope_t *s = inter->stack[inter->depth - 1 - d];
+		val_t *r = getdef(s, n);
+		if (r) {
+			return r;
+		}
+	}
+	return NULL;
 }
 
 // Returns the value bound to name n in scope s.
@@ -130,47 +156,44 @@ pub val_t *globalget(vm_t *inter, const char *name) {
 	return getdef(inter->stack[0], name);
 }
 
-pub val_t *lookup(vm_t *inter, const char *n) {
-	if (!n) {
-		panic("n is null");
-	}
-	for (size_t d = 0; d < inter->depth; d++) {
-		scope_t *s = inter->stack[inter->depth - 1 - d];
-		val_t *r = getdef(s, n);
-		if (r) {
-			return r;
-		}
-	}
-	return NULL;
-}
+
+//
+// Value queries
+//
 
 // Returns the first item of the list x.
 pub val_t *car(val_t *x) {
-	if (x->type != LIST || x->nitems == 0) {
+	if (x->type != LIST || x->list.size == 0) {
 		return NULL;
 	}
-	return x->items[0];
+	return x->list.items[0];
 }
 
 // Returns the tail of the list x.
 pub val_t *cdr(vm_t *inter, val_t *x) {
-	if (!x || x->type != LIST || x->nitems <= 1) {
+	if (!x || x->type != LIST || x->list.size <= 1) {
 		return NULL;
 	}
 	val_t *r = newlist(inter);
-	for (size_t i = 1; i < x->nitems; i++) {
-		r->items[i-1] = x->items[i];
+	for (size_t i = 1; i < x->list.size; i++) {
+		r->list.items[i-1] = x->list.items[i];
 	}
-	r->nitems = x->nitems-1;
+	r->list.size = x->list.size-1;
 	return r;
 }
 
 pub val_t *first(val_t *x) {
-	return x->items[0];
+	return x->list.items[0];
 }
 
 pub val_t *second(val_t *x) {
-	return x->items[1];
+	return x->list.items[1];
+}
+
+pub size_t len(val_t *x) {
+	if (!x) panic("x is null");
+	if (x->type != LIST) panic("not a list");
+	return x->list.size;
 }
 
 pub val_t *slice(vm_t *inter, val_t *x, size_t start) {
@@ -180,31 +203,33 @@ pub val_t *slice(vm_t *inter, val_t *x, size_t start) {
 	val_t *r = newlist(inter);
 	size_t n = len(x);
 	for (size_t i = start; i < n; i++) {
-		r->items[r->nitems++] = x->items[i];
+		r->list.items[r->list.size++] = x->list.items[i];
 	}
 	return r;
 }
 
+//
+// Value constructors
+//
+
 pub val_t *newnumber(vm_t *p, const char *val) {
 	val_t *x = make(p);
 	x->type = NUMBER;
-	x->value = calloc(TODOSIZE, 1);
-	strcpy(x->value, val);
+	strcpy(x->num.value, val);
 	return x;
 }
 
 pub val_t *newlist(vm_t *p) {
 	val_t *x = make(p);
 	x->type = LIST;
-	x->items = calloc(TODOSIZE, sizeof(x));
+	x->list.items = calloc(TODOSIZE, sizeof(x));
 	return x;
 }
 
 pub val_t *newsym(vm_t *p, const char *s) {
 	val_t *x = make(p);
 	x->type = SYMBOL;
-	x->name = calloc(TODOSIZE, 1);
-	strcpy(x->name, s);
+	strcpy(x->sym.name, s);
 	return x;
 }
 
@@ -213,11 +238,11 @@ pub val_t *newsym(vm_t *p, const char *s) {
 pub val_t *newfunc(vm_t *inter, val_t *args, val_t *body) {
 	val_t *x = make(inter);
 	x->type = FUNC;
-	for (size_t i = 0; i < args->nitems; i++) {
-		strcpy(x->fn_argnames[x->fn_nargs++], args->items[i]->name);
+	for (size_t i = 0; i < args->list.size; i++) {
+		strcpy(x->fn.argnames[x->fn.nargs++], args->list.items[i]->sym.name);
 	}
-	for (size_t i = 0; i < body->nitems; i++) {
-		x->fn_statements[x->fn_nstatements++] = body->items[i];
+	for (size_t i = 0; i < body->list.size; i++) {
+		x->fn.statements[x->fn.nstatements++] = body->list.items[i];
 	}
 	return x;
 }
@@ -251,6 +276,10 @@ val_t *alloc(vm_t *inter) {
 	gc_trace("OOM");
 	return NULL;
 }
+
+//
+// GC
+//
 
 void gc_trace(const char *format, ...) {
 	if (!GCDEBUG) return;
@@ -305,22 +334,20 @@ void gc_mark(bitset.t *used, vm_t *inter, val_t *x) {
 	}
 	bitset.set(used, x->mempos);
 	if (x->type == LIST) {
-		for (size_t i = 0; i < x->nitems; i++) {
-			gc_mark(used, inter, x->items[i]);
+		for (size_t i = 0; i < x->list.size; i++) {
+			gc_mark(used, inter, x->list.items[i]);
 		}
 	}
 	if (x->type == FUNC) {
-		for (size_t i = 0; i < x->fn_nstatements; i++) {
-			gc_mark(used, inter, x->fn_statements[i]);
+		for (size_t i = 0; i < x->fn.nstatements; i++) {
+			gc_mark(used, inter, x->fn.statements[i]);
 		}
 	}
 }
 
-pub size_t len(val_t *x) {
-	if (!x) panic("x is null");
-	if (x->type != LIST) panic("not a list");
-	return x->nitems;
-}
+//
+// Printers
+//
 
 // Prints the given item to stdout for debugging.
 pub void dbgprint(val_t *x) {
@@ -350,26 +377,26 @@ void _print(strbuilder.str *s, val_t *x) {
 	}
 	switch (x->type) {
 		case SYMBOL: {
-			strbuilder.adds(s, x->name);
+			strbuilder.adds(s, x->sym.name);
 		}
 		case NUMBER: {
-			strbuilder.adds(s, x->value);
+			strbuilder.adds(s, x->num.value);
 		}
 		case LIST: {
 			strbuilder.str_addc(s, '(');
-			for (size_t i = 0; i < x->nitems; i++) {
+			for (size_t i = 0; i < x->list.size; i++) {
 				if (i > 0) {
 					strbuilder.str_addc(s, ' ');
 				}
-				_print(s, x->items[i]);
+				_print(s, x->list.items[i]);
 			}
 			strbuilder.str_addc(s, ')');
 		}
 		case FUNC: {
 			strbuilder.adds(s, "fn (");
-			for (size_t i = 0; i < x->fn_nargs; i++) {
+			for (size_t i = 0; i < x->fn.nargs; i++) {
 				if (i > 0) strbuilder.adds(s, " ");
-				strbuilder.adds(s, x->fn_argnames[i]);
+				strbuilder.adds(s, x->fn.argnames[i]);
 			}
 			strbuilder.adds(s, ") ...");
 		}

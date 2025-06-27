@@ -43,7 +43,7 @@ vm.val_t *readsymbol(vm.vm_t *p, tokenizer.t *b) {
 	vm.val_t *x = vm.newsym(p, "");
 	int pos = 0;
 	while (tokenizer.more(b) && !isspace(tokenizer.peek(b)) && tokenizer.peek(b) != ')') {
-		x->name[pos++] = tokenizer.get(b);
+		x->sym.name[pos++] = tokenizer.get(b);
 	}
 	if (pos == 0) {
 		panic("failed to read symbol at %s", tokenizer.posstr(b));
@@ -58,7 +58,7 @@ vm.val_t *readlist(vm.vm_t *p, tokenizer.t *b) {
 	tokenizer.get(b); // "("
 	tokenizer.spaces(b);
 	while (tokenizer.peek(b) != EOF && tokenizer.peek(b) != ')') {
-		x->items[x->nitems++] = readtok(p, b);
+		x->list.items[x->list.size++] = readtok(p, b);
 		tokenizer.spaces(b);
 	}
 	if (tokenizer.peek(b) != ')') {

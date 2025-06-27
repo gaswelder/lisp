@@ -45,34 +45,34 @@ pub vm.val_t **compile(vm.vm_t *p, vm.val_t **in, size_t n) {
 int compile_if(vm.vm_t *p, vm.val_t *x, vm.val_t *body[], int added) {
 	// Tests the condition and skips the ok branch if false.
 	vm.val_t *tst = vm.newlist(p);
-	tst->items[tst->nitems++] = vm.globalget(p, "__test_and_jump_if_false");
-	tst->items[tst->nitems++] = x->items[1];
+	tst->list.items[tst->list.size++] = vm.globalget(p, "__test_and_jump_if_false");
+	tst->list.items[tst->list.size++] = x->list.items[1];
 	body[added++] = tst;
 
 	// The ok branch with an end marker.
-	body[added++] = x->items[2];
+	body[added++] = x->list.items[2];
 	body[added++] = vm.globalget(p, "__end");
 
 	// The else branch.
-	body[added++] = x->items[3];
+	body[added++] = x->list.items[3];
 
 	return added;
 }
 
 int compile_cond(vm.vm_t *p, vm.val_t *cond, vm.val_t *body[], int added) {
-	for (size_t i = 1; i < cond->nitems; i++) {
-		vm.val_t *alt = cond->items[i];
+	for (size_t i = 1; i < cond->list.size; i++) {
+		vm.val_t *alt = cond->list.items[i];
 
 		// Tests the condtion and skips the ok expression if false.
 		// Implies that cond values have exactly one expression.
 		vm.val_t *tst = vm.newlist(p);
-		tst->items[tst->nitems++] = vm.globalget(p, "__test_and_jump_if_false");
-		tst->items[tst->nitems++] = alt->items[0];
+		tst->list.items[tst->list.size++] = vm.globalget(p, "__test_and_jump_if_false");
+		tst->list.items[tst->list.size++] = alt->list.items[0];
 		body[added++] = tst;
 
 		// Value followed by the stop command
 		// (implies that this cond is the last expression)
-		body[added++] = alt->items[1];
+		body[added++] = alt->list.items[1];
 		body[added++] = vm.globalget(p, "__end");
 	}
 	return added;
@@ -80,6 +80,6 @@ int compile_cond(vm.vm_t *p, vm.val_t *cond, vm.val_t *body[], int added) {
 
 bool islist(vm.val_t *x, const char *name) {
 	return x->type == vm.LIST
-		&& x->items[0]->type == vm.SYMBOL
-		&& !strcmp(x->items[0]->name, name);
+		&& x->list.items[0]->type == vm.SYMBOL
+		&& !strcmp(x->list.items[0]->sym.name, name);
 }
