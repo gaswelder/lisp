@@ -208,9 +208,14 @@ vm.val_t *runcustomfunc(vm.vm_t *inter, vm.val_t *f, vm.val_t *args) {
 	}
 
 	// Create a new scope for the call.
+	// Be careful not to push on stack until the whole scope is done.
+	vm.val_t *vargs[100];
+	for (size_t i = 0; i < f->fn_nargs; i++) {
+		vargs[i] = eval(inter, args->items[i]);
+	}
 	vm.pushscope(inter);
 	for (size_t i = 0; i < f->fn_nargs; i++) {
-		vm.pushdef(inter, f->fn_argnames[i], eval(inter, args->items[i]));
+		vm.pushdef(inter, f->fn_argnames[i], vargs[i]);
 	}
 
 	// The result of execution will be set here.
@@ -236,28 +241,41 @@ vm.val_t *runcustomfunc(vm.vm_t *inter, vm.val_t *f, vm.val_t *args) {
 			continue;
 		}
 
-		// if (islist(x, f->name)) {
-		// 	// Build a new scope such that an honest call would produce.
-		// 	vm.scope_t *s3 = vm.newscope();
-		// 	for (size_t a = 0; a < f->nargs; a++) {
-		// 		pushdef(s3, f->argnames[a], eval(inter, x->items[1+a]));
-		// 	}
+		// If this is the last statement
+		// and a call to the same function,
+		// do a tail recursion.
+		if (body[i+1] == NULL
+			&& x->type == vm.LIST
+			&& vm.car(x)->type == vm.SYMBOL
+			&& vm.lookup(inter, x->items[0]->name) == f
+		) {
+			// Build a new scope like an new call would produce.
+			// It has to be built in isolation and only then added to the stack.
+			vm.val_t *newargsv[10];
+			vm.val_t *newargs = vm.cdr(inter, x);
+			for (size_t i = 0; i < f->fn_nargs; i++) {
+				newargsv[i] = eval(inter, newargs->items[i]);
+			}
+			vm.popscope(inter);
+			vm.pushscope(inter);
+			for (size_t i = 0; i < f->fn_nargs; i++) {
+				vm.pushdef(inter, f->fn_argnames[i], newargsv[i]);
+			}
 
-		// 	// Replace the scope and loop back to the beginning.
-		// 	inter->stack[inter->depth-1] = s3;
-		// 	r = NULL;
-		// 	i = -1;
-		// 	if (inter->trace) {
-		// 		trace_indent(inter->depth);
-		// 		printf("TAIL_RECUR: %s\n", f->name);
-		// 	}
-		// 	continue;
-		// }
+			// Start the loop from the beginning with the new scope.
+			r = NULL;
+			i = -1;
+			if (inter->trace) {
+				trace_indent(inter->depth);
+				printf("TAIL_RECUR: %s\n", f->name);
+			}
+			continue;
+		}
 
 		r = eval(inter, x);
 	}
 
-	inter->depth--;
+	vm.popscope(inter);
 	OS.free(body);
 	return r;
 }

@@ -102,6 +102,14 @@ pub scope_t *pushscope(vm_t *inter) {
     return s;
 }
 
+pub void popscope(vm_t *inter) {
+    if (inter->depth == 0) {
+        panic("stack is empty");
+    }
+    inter->depth--;
+    OS.free(inter->stack[inter->depth]);
+}
+
 // Returns the value bound to name n in scope s.
 // Returns NULL if there is no such value.
 val_t *getdef(scope_t *s, const char *n) {

@@ -3,7 +3,16 @@
 #define TODOSIZE 100
 #define TODOVOIDPSIZE 64
 
+bool TRACE = false;
+
 pub vm.val_t **compile(vm.vm_t *p, vm.val_t **in, size_t n) {
+    if (TRACE) {
+        printf("compile:\n");
+        for (size_t i = 0; i < n; i++) {
+            vm.dbgprint(in[i]);
+        }
+    }
+
 	vm.val_t **out = calloc(TODOSIZE, TODOVOIDPSIZE);
 	int pos = 0;
 
@@ -21,6 +30,14 @@ pub vm.val_t **compile(vm.vm_t *p, vm.val_t **in, size_t n) {
 		}
 		out[pos++] = x;
 	}
+
+    if (TRACE) {
+        printf("result:\n");
+        for (int i = 0; i < pos; i++) {
+            printf("%d: ", i);
+            vm.dbgprint(out[i]);
+        }
+    }
 
 	return out;
 }
