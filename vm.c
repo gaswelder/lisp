@@ -1,5 +1,4 @@
 #import os/self
-#import bitset.c
 #import strbuilder
 
 #define TODOSIZE 100
@@ -259,15 +258,14 @@ val_t *make(vm_t *p) {
 	return x;
 }
 
-// Returns a pointer to an unused value from the pool.
-// Returns NULL if there are no free values.
+// Returns a pointer to an unused node from the pool.
+// Returns NULL if there are no free nodes.
 val_t *alloc(vm_t *inter) {
 	for (size_t i = 0; i < inter->poolsize; i++) {
 		size_t pos = (inter->last_alloc + i) % inter->poolsize;
 		if (inter->in_use[pos]) {
 			continue;
 		}
-		gc_trace("alloc at %zu", pos);
 		inter->in_use[pos] = true;
 		inter->poolitems[pos].mempos = pos;
 		inter->last_alloc = pos;
@@ -293,57 +291,59 @@ void gc_trace(const char *format, ...) {
 
 // Runs a full GC cycle.
 void gc(vm_t *inter) {
-	gc_trace("gc start: depth=%zu, poolsize=%zu", inter->depth, inter->poolsize);
+    (void) inter;
 
-	bitset.t *used = bitset.new(inter->poolsize);
+	// gc_trace("gc start: depth=%zu, poolsize=%zu", inter->depth, inter->poolsize);
 
-	for (size_t i = 0; i < inter->depth; i++) {
-		gc_trace("frame %zu\n-----------", i);
-		scope_t *s = inter->stack[i];
-		for (size_t j = 0; j < s->size; j++) {
-			val_t *b = s->vals[j];
-			gc_trace("%zu: %s", j, s->names[j]);
-			gc_mark(used, inter, b);
-		}
-	}
+	// bitset.t *used = bitset.new(inter->poolsize);
 
-	size_t frees = 0;
-	for (size_t i = 0; i < inter->poolsize; i++) {
-		if (!inter->in_use[i] || bitset.isset(used, i)) {
-			continue;
-		}
-		if (GCDEBUG) {
-			printf("free %zu: ", i);
-			dbgprint(&inter->poolitems[i]);
-		}
-		inter->in_use[i] = false;
-		// memset(&p->poolitems[i], 0, sizeof(val_t));
-		frees++;
-	}
-	// printf("gc: %zu frees\n", frees);
-	bitset.free(used);
+	// for (size_t i = 0; i < inter->depth; i++) {
+	// 	gc_trace("frame %zu\n-----------", i);
+	// 	scope_t *s = inter->stack[i];
+	// 	for (size_t j = 0; j < s->size; j++) {
+	// 		val_t *b = s->vals[j];
+	// 		gc_trace("%zu: %s", j, s->names[j]);
+	// 		gc_mark(used, inter, b);
+	// 	}
+	// }
+
+	// size_t frees = 0;
+	// for (size_t i = 0; i < inter->poolsize; i++) {
+	// 	if (!inter->in_use[i] || bitset.isset(used, i)) {
+	// 		continue;
+	// 	}
+	// 	if (GCDEBUG) {
+	// 		printf("free %zu: ", i);
+	// 		dbgprint(&inter->poolitems[i]);
+	// 	}
+	// 	inter->in_use[i] = false;
+	// 	// memset(&p->poolitems[i], 0, sizeof(val_t));
+	// 	frees++;
+	// }
+	// // printf("gc: %zu frees\n", frees);
+	// bitset.free(used);
 }
 
-void gc_mark(bitset.t *used, vm_t *inter, val_t *x) {
-	if (!x) {
-		return;
-	}
-	if (GCDEBUG) {
-		printf("mark %zu: ", x->mempos);
-		dbgprint(x);
-	}
-	bitset.set(used, x->mempos);
-	if (x->type == LIST) {
-		for (size_t i = 0; i < x->list.size; i++) {
-			gc_mark(used, inter, x->list.items[i]);
-		}
-	}
-	if (x->type == FUNC) {
-		for (size_t i = 0; i < x->fn.nstatements; i++) {
-			gc_mark(used, inter, x->fn.statements[i]);
-		}
-	}
-}
+// void gc_mark(bitset.t *used, vm_t *inter, val_t *x) {
+// 	if (!x) {
+// 		return;
+// 	}
+// 	if (GCDEBUG) {
+// 		printf("mark %zu: ", x->mempos);
+// 		dbgprint(x);
+// 	}
+// 	bitset.set(used, x->mempos);
+// 	if (x->type == LIST) {
+// 		for (size_t i = 0; i < x->list.size; i++) {
+// 			gc_mark(used, inter, x->list.items[i]);
+// 		}
+// 	}
+// 	if (x->type == FUNC) {
+// 		for (size_t i = 0; i < x->fn.nstatements; i++) {
+// 			gc_mark(used, inter, x->fn.statements[i]);
+// 		}
+// 	}
+// }
 
 //
 // Printers
