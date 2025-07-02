@@ -1,0 +1,29 @@
+(define (random n)
+    (define x (if (__globalget __rndseed)
+                    (__globalget __rndseed)
+                    123))
+    (define xnext (remainder (* 123 (+ x 456))
+                          2048))
+
+    (__globalset __rndseed xnext)
+    (remainder xnext n))
+
+
+(define (expmod base exp m)
+    (cond   ((= exp 0) 1)
+            ((even? exp)
+                (remainder (square (expmod base (/ exp 2) m)) m))
+            (else
+                (remainder (* base (expmod base (- exp 1) m)) m))))
+
+
+(define (fermat-test n)
+    (define (try-it a) (= (expmod a n n) a))
+    (try-it (+ 1 (random (- n 1)))))
+
+(define (fast-prime? n times)
+    (cond ((= times 0) true)
+          ((fermat-test n) (fast-prime? n (- times 1)))
+          (else false)))
+
+(fast-prime? 541 10)
