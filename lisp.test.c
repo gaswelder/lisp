@@ -88,6 +88,9 @@ case_t cases[] = {
 		"ok"
 	},
 
+	// false
+	{"(if false 1 2)", "2"},
+
 	// Examples
 	{"(apply cons (quote (a (b c))))", "(a b c)"},
 	{

@@ -355,8 +355,8 @@ vm.val_t *fn_cond(vm.vm_t *inter, vm.val_t *args) {
 	vm.val_t *l = args;
 	while (l) {
 		vm.val_t *cas = vm.car(l);
-		vm.val_t *cond = vm.car(cas);
-		if (eval(inter, cond)) {
+		vm.val_t *cond = eval(inter, vm.car(cas));
+		if (truthy(cond)) {
 			vm.val_t *result = vm.car(vm.cdr(inter, cas));
 			return eval(inter, result);
 		}
@@ -376,9 +376,9 @@ vm.val_t *fn_not(vm.vm_t *inter, vm.val_t *args) {
 // (if x then)
 // (if x then else)
 vm.val_t *fn_if(vm.vm_t *inter, vm.val_t *args) {
-	vm.val_t *pred = vm.car(args);
-	vm.val_t *ethen = vm.car(vm.cdr(inter, args));
-	if (eval(inter, pred)) {
+	vm.val_t *pred = eval(inter, vm.car(args));
+	if (truthy(pred)) {
+		vm.val_t *ethen = vm.car(vm.cdr(inter, args));
 		return eval(inter, ethen);
 	}
 	if (args->list.size < 3) {
@@ -606,3 +606,6 @@ bool is_symbol(vm.val_t *x, const char *name) {
 	return x->type == vm.SYMBOL && !strcmp(x->sym.name, name);
 }
 
+bool truthy(vm.val_t *x) {
+	return x != NULL && !is_symbol(x, "false");
+}
