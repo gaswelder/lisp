@@ -132,7 +132,7 @@ void pushdef(vm.scope_t *s, const char *name, vm.val_t *val) {
 // Evaluates a node.
 vm.val_t *eval(vm.vm_t *inter, vm.val_t *x) {
 	if (!x) {
-		panic("eval of NULL");
+		return x;
 	}
 	switch (x->type) {
 		case vm.NUMBER: {
@@ -286,6 +286,8 @@ vm.val_t *runcustomfunc(vm.vm_t *inter, vm.val_t *f, vm.val_t *args) {
 vm.val_t *run_builtin_func(vm.vm_t *inter, const char *name, vm.val_t *args) {
 	switch str (name) {
 		case "quote": { return fn_quote(args); }
+		case "car": { return fn_car(inter, args); }
+		case "cdr": { return fn_cdr(inter, args); }
 		case "cons": { return fn_cons(inter, args); }
 		case "apply": { return fn_apply(inter, args); }
 		case "eq?": { return fn_eq(inter, args); }
@@ -319,6 +321,14 @@ vm.val_t *fn_import(vm.vm_t *inter, vm.val_t *args) {
 
 vm.val_t *fn_quote(vm.val_t *args) {
 	return vm.car(args);
+}
+
+vm.val_t *fn_car(vm.vm_t *inter, vm.val_t *args) {
+	return eval(inter, vm.car(args));
+}
+
+vm.val_t *fn_cdr(vm.vm_t *inter, vm.val_t *args) {
+	return eval(inter, vm.cdr(inter, args));
 }
 
 vm.val_t *fn_globalset(vm.vm_t *inter, vm.val_t *args) {
