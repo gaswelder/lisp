@@ -1,4 +1,4 @@
-(define (average x y) (/ (+ x y) 2))
+(import examples/lib/average)
 
 (define (sqrt-iter guess x)
 	(if (good-enough? guess x)

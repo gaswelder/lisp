@@ -1,5 +1,5 @@
 (define (sqrt x)
-    (define (sqr x) (* x x))
+    (import examples/lib/sqr)
     (define (average a b) (/ (+ a b) 2))
     (define (good-enough? guess x)
         (< (abs (- (sqr guess) x)) 0.001))

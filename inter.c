@@ -1,7 +1,8 @@
+#import os/fs
 #import tokenizer
 #import vm.c
-#import vmread.c
 #import vmcomp.c
+#import vmread.c
 
 #define TODOSIZE 100
 
@@ -68,7 +69,7 @@ pub int repl(tt_t *t, FILE *f) {
 
 		// Evaluate and print.
 		vm.val_t *r = eval(in, x);
-		if (!islist(x, "define")) {
+		if (!islist(x, "define") && !islist(x, "import")) {
 			vm.print(r, buf, 4096);
 			puts(buf);
 		}
@@ -303,8 +304,17 @@ vm.val_t *run_builtin_func(vm.vm_t *inter, const char *name, vm.val_t *args) {
 		case "not": { return fn_not(inter, args); }
 		case "__globalset": { return fn_globalset(inter, args); }
 		case "__globalget": { return fn_globalget(inter, args); }
+		case "import": { return fn_import(inter, args); }
 	}
 	panic("unknown function: %s", name);
+}
+
+vm.val_t *fn_import(vm.vm_t *inter, vm.val_t *args) {
+	const char *path = args->list.items[0]->sym.name;
+	char *lib = fs.readfile_str(path);
+	vmevalstr(inter, lib);
+	OS.free(lib);
+	return NULL;
 }
 
 vm.val_t *fn_quote(vm.val_t *args) {

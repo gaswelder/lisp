@@ -1,0 +1,9 @@
+(define (random n)
+    (define x (if (__globalget __rndseed)
+                    (__globalget __rndseed)
+                    123))
+    (define xnext (remainder (* 123 (+ x 456))
+                          2048))
+
+    (__globalset __rndseed xnext)
+    (remainder xnext n))
