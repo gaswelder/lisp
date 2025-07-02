@@ -307,8 +307,33 @@ vm.val_t *run_builtin_func(vm.vm_t *inter, const char *name, vm.val_t *args) {
 		case "__globalset": { return fn_globalset(inter, args); }
 		case "__globalget": { return fn_globalget(inter, args); }
 		case "import": { return fn_import(inter, args); }
+		case "newline": { return fn_newline(inter, args); }
+		case "display": { return fn_display(inter, args); }
+		case "runtime": { return fn_runtime(inter, args); }
 	}
 	panic("unknown function: %s", name);
+}
+
+vm.val_t *fn_runtime(vm.vm_t *inter, vm.val_t *args) {
+	(void) args;
+	char buf[10] = {};
+	sprintf(buf, "%d", vm.runtime(inter));
+	return vm.newnumber(inter, buf);
+}
+
+vm.val_t *fn_newline(vm.vm_t *inter, vm.val_t *args) {
+	(void) args;
+	(void) inter;
+	puts("");
+	return NULL;
+}
+
+vm.val_t *fn_display(vm.vm_t *inter, vm.val_t *args) {
+	vm.val_t *x = eval(inter, vm.car(args));
+	char buf[100] = {};
+	vm.print(x, buf, sizeof(buf));
+	printf("%s", buf);
+	return NULL;
 }
 
 vm.val_t *fn_import(vm.vm_t *inter, vm.val_t *args) {

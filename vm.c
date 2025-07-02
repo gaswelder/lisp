@@ -1,5 +1,6 @@
 #import os/self
 #import strbuilder
+#import time
 
 #define TODOSIZE 100
 bool GCDEBUG = false;
@@ -15,6 +16,8 @@ pub typedef {
 	size_t poolsize;
 	val_t *poolitems;
 	size_t last_alloc;
+
+    int created_at; // unix ms
 } vm_t;
 
 // Scope is a list of name->value bindings.
@@ -77,7 +80,16 @@ pub vm_t *newvm(size_t N) {
 	r->poolsize = N;
 	r->in_use = calloc(N, sizeof(bool));
 
+    time.t now = time.now();
+    r->created_at = time.usec(&now);
+
 	return r;
+}
+
+// Returns the number of microseconds elapsed since the instantiation.
+pub int runtime(vm_t *inter) {
+    time.t now = time.now();
+    return time.usec(&now) - inter->created_at;
 }
 
 //
