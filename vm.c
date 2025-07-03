@@ -48,6 +48,7 @@ pub typedef {
 	char argnames[10][10];
 	uint8_t nstatements;
 	val_t *statements[TODOSIZE];
+    native_func_t *native_fn;
 } fnval_t;
 
 pub typedef {
@@ -64,6 +65,8 @@ pub typedef {
 	listval_t list;
 	fnval_t fn;
 } val_t;
+
+pub typedef val_t *native_func_t(vm_t *, val_t *);
 
 pub vm_t *newvm(size_t N) {
 	vm_t *r = calloc(1, sizeof(vm_t));
@@ -258,7 +261,7 @@ pub val_t *newfunc(vm_t *inter, val_t *args, val_t *body) {
 	return x;
 }
 
-val_t *make(vm_t *p) {
+pub val_t *make(vm_t *p) {
 	val_t *x = alloc(p);
 	if (!x) {
 		gc(p);
@@ -405,6 +408,9 @@ void _print(strbuilder.str *s, val_t *x) {
 			strbuilder.str_addc(s, ')');
 		}
 		case FUNC: {
+            if (x->fn.native_fn != NULL) {
+                strbuilder.adds(s, "native ");
+            }
 			strbuilder.adds(s, "fn (");
 			for (size_t i = 0; i < x->fn.nargs; i++) {
 				if (i > 0) strbuilder.adds(s, " ");

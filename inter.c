@@ -6,6 +6,39 @@
 
 #define TODOSIZE 100
 
+typedef {
+	const char *name;
+	vm.native_func_t *f;
+} kv_t;
+
+kv_t builtin_funcs[] = {
+	{"quote",	fn_quote },
+	{"car",		fn_car },
+	{"cdr",		fn_cdr },
+	{"cons",	fn_cons },
+	{"apply",	fn_apply },
+	{"eq?",		fn_eq },
+	{"define",	fn_define },
+	{"*",		fn_mul },
+	{"+",		fn_add },
+	{"-",		fn_sub },
+	{"/",		fn_over },
+	{">",		fn_gt },
+	{"<",		fn_lt },
+	{"=",		fn_numeq },
+	{"cond",	fn_cond },
+	{"if",		fn_if },
+	{"and",		fn_and },
+	{"or",		fn_or },
+	{"not",		fn_not },
+	{"__globalset",	fn_globalset },
+	{"__globalget",	fn_globalget },
+	{"import",		fn_import },
+	{"newline",		fn_newline },
+	{"display",		fn_display },
+	{"runtime",		fn_runtime },
+};
+
 const char *STDLIB = "
 (define (inc x) (+ 1 x))
 (define (dec x) (- x 1))
@@ -99,16 +132,20 @@ vm.vm_t *newvm(size_t N) {
 	// Scope 0 for globals.
 	r->stack[r->depth++] = vm.newscope();
 
+	// Put native functions into the global scope.
+	for (size_t i = 0; i < nelem(builtin_funcs); i++) {
+		kv_t *b = &builtin_funcs[i];
+		vm.val_t *val = vm.make(r);
+		val->type = vm.FUNC;
+		val->fn.native_fn = b->f;
+		vm.pushdef(r, b->name, val);
+	}
+	vmevalstr(r, STDLIB);
+
 	// These are special symbols used in compiled bodies for tail recursion.
 	// They are stashed here in globals to keep them from being GC'd.
 	vmevalstr(r, "(define __end __op_end)");
 	vmevalstr(r, "(define __test_and_jump_if_false __op_test_and_jump_if_false)");
-
-	// Scope 1 for predefined things.
-	r->stack[r->depth++] = vm.newscope();
-
-	// Define standard functions.
-	vmevalstr(r, STDLIB);
 
 	// A clean scope on top for user programs.
 	r->stack[r->depth++] = vm.newscope();
@@ -135,7 +172,7 @@ vm.val_t *eval(vm.vm_t *inter, vm.val_t *x) {
 		return x;
 	}
 	switch (x->type) {
-		case vm.NUMBER: {
+		case vm.NUMBER, vm.FUNC: {
 			return x;
 		}
 		case vm.SYMBOL: {
@@ -150,12 +187,9 @@ vm.val_t *eval(vm.vm_t *inter, vm.val_t *x) {
 		}
 		case vm.LIST: {
 			trace_list_before(inter, x);
-			vm.val_t *r = eval_list(inter, x);
+			vm.val_t *r = run_func(inter, vm.car(x), vm.cdr(inter, x));
 			trace_list_after(inter, r);
 			return r;
-		}
-		case vm.FUNC: {
-			return x;
 		}
 		default: {
 			panic("unexpected value type");
@@ -163,42 +197,16 @@ vm.val_t *eval(vm.vm_t *inter, vm.val_t *x) {
 	}
 }
 
-// Evaluates a list node.
-vm.val_t *eval_list(vm.vm_t *inter, vm.val_t *x) {
-	// The first item could be anything, we might need to evaluate it
-	// to find out which function to run.
-	vm.val_t *first = vm.car(x);
-	if (first->type == vm.LIST) {
-		first = eval(inter, first);
-	}
-	// At this point we should have a symbol.
-	if (first->type != vm.SYMBOL) {
-		char buf[TODOSIZE];
-		vm.print(first, buf, TODOSIZE);
-		panic("invalid function invocation: got %s as function", buf);
-	}
-	return eval_func(inter, first->sym.name, vm.cdr(inter, x));
-}
-
-// Evaluates a function node.
-vm.val_t *eval_func(vm.vm_t *inter, const char *name, vm.val_t *args) {
-	if (inter->trace) {
-		trace_indent(inter->depth);
-		printf("RUN_FUNC: %s\n", name);
-	}
-
-	// See if there is a defined function with this name.
-	// Custom definitions take precedence over the built-ins below.
-	vm.val_t *f = vm.lookup(inter, name);
-	if (f) {
-		return runcustomfunc(inter, f, args);
-	}
-	return run_builtin_func(inter, name, args);
-}
-
-vm.val_t *runcustomfunc(vm.vm_t *inter, vm.val_t *f, vm.val_t *args) {
+vm.val_t *run_func(vm.vm_t *inter, vm.val_t *fn, *args) {
+	trace_run_func(inter, fn);
+	vm.val_t *f = eval(inter, fn);
 	if (f->type != vm.FUNC) {
+		vm.dbgprint(f);
 		panic("not a function");
+	}
+
+	if (f->fn.native_fn) {
+		return f->fn.native_fn(inter, args);
 	}
 
 	// Check the arguments number.
@@ -281,39 +289,6 @@ vm.val_t *runcustomfunc(vm.vm_t *inter, vm.val_t *f, vm.val_t *args) {
 	return r;
 }
 
-
-
-vm.val_t *run_builtin_func(vm.vm_t *inter, const char *name, vm.val_t *args) {
-	switch str (name) {
-		case "quote": { return fn_quote(args); }
-		case "car": { return fn_car(inter, args); }
-		case "cdr": { return fn_cdr(inter, args); }
-		case "cons": { return fn_cons(inter, args); }
-		case "apply": { return fn_apply(inter, args); }
-		case "eq?": { return fn_eq(inter, args); }
-		case "define": { return fn_define(inter, args); }
-		case "*": { return fn_mul(inter, args); }
-		case "+": { return fn_add(inter, args); }
-		case "-": { return fn_sub(inter, args); }
-		case "/": { return fn_over(inter, args); }
-		case ">": { return fn_gt(inter, args); }
-		case "<": { return fn_lt(inter, args); }
-		case "=": { return fn_numeq(inter, args); }
-		case "cond": { return fn_cond(inter, args); }
-		case "if": { return fn_if(inter, args); }
-		case "and": { return fn_and(inter, args); }
-		case "or": { return fn_or(inter, args); }
-		case "not": { return fn_not(inter, args); }
-		case "__globalset": { return fn_globalset(inter, args); }
-		case "__globalget": { return fn_globalget(inter, args); }
-		case "import": { return fn_import(inter, args); }
-		case "newline": { return fn_newline(inter, args); }
-		case "display": { return fn_display(inter, args); }
-		case "runtime": { return fn_runtime(inter, args); }
-	}
-	panic("unknown function: %s", name);
-}
-
 vm.val_t *fn_runtime(vm.vm_t *inter, vm.val_t *args) {
 	(void) args;
 	char buf[10] = {};
@@ -344,7 +319,8 @@ vm.val_t *fn_import(vm.vm_t *inter, vm.val_t *args) {
 	return NULL;
 }
 
-vm.val_t *fn_quote(vm.val_t *args) {
+vm.val_t *fn_quote(vm.vm_t *inter, vm.val_t *args) {
+	(void) inter;
 	return vm.car(args);
 }
 
@@ -456,11 +432,8 @@ vm.val_t *fn_or(vm.vm_t *inter, vm.val_t *args) {
 
 vm.val_t *fn_apply(vm.vm_t *inter, vm.val_t *list) {
 	vm.val_t *fn = vm.car(list);
-	if (fn->type != vm.SYMBOL) {
-		vm.dbgprint(list);
-		panic("first element is a non-symbol");
-	}
-	return eval_func(inter, fn->sym.name, eval(inter, vm.car(vm.cdr(inter, list))));
+	vm.val_t *args = vm.car(vm.cdr(inter, list));
+	return run_func(inter, fn, args);
 }
 
 // (* a b) returns a * b
@@ -606,7 +579,7 @@ void trace_indent(size_t depth) {
 void trace_symbol_eval(vm.vm_t *inter, vm.val_t *x, *r) {
 	if (!inter->trace) return;
 	trace_indent(inter->depth);
-	printf("EVAL_SYM %s: ", x->sym.name);
+	printf("eval sym: %s = ", x->sym.name);
 	vm.dbgprint(r);
 }
 
@@ -616,6 +589,13 @@ void trace_list_before(vm.vm_t *inter, vm.val_t *x) {
 	trace_indent(inter->depth);
 	printf("eval: ");
 	vm.dbgprint(x);
+}
+
+void trace_run_func(vm.vm_t *inter, vm.val_t *fn) {
+	if (!inter->trace) return;
+	trace_indent(inter->depth);
+	printf("running func: ");
+	vm.dbgprint(fn);
 }
 
 void print_scope(vm.scope_t *s) {
