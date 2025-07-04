@@ -144,34 +144,41 @@ pub val_t *lookup(vm_t *inter, const char *n) {
 	}
 	for (size_t d = 0; d < inter->depth; d++) {
 		scope_t *s = inter->stack[inter->depth - 1 - d];
-		val_t *r = getdef(s, n);
-		if (r) {
+		val_t *r = NULL;
+		if (getdef(s, n, &r)) {
 			return r;
 		}
 	}
 	return NULL;
 }
 
-// Returns the value bound to name n in scope s.
-// Returns NULL if there is no such value.
-val_t *getdef(scope_t *s, const char *n) {
-	if (!n) {
-		panic("n is null");
-	}
+pub val_t *globalget(vm_t *inter, const char *name) {
 	val_t *r = NULL;
-	for (size_t i = 0; i < s->size; i++) {
-		if (!strcmp(n, s->names[i])) {
-			// Don't break because redefinitions can be added further down.
-			r = s->vals[i];
-		}
-	}
+	getdef(inter->stack[0], name, &r);
 	return r;
 }
 
-pub val_t *globalget(vm_t *inter, const char *name) {
-	return getdef(inter->stack[0], name);
+// Finds the value bound to name n in scope s and puts it into r.
+// Returns true if the value was found.
+bool getdef(scope_t *s, const char *n, val_t **r) {
+	if (!n) {
+		panic("n is null");
+	}
+	// We don't break in the loop below because
+	// redefinitions are simply written as new bindings.
+	// We also need the found flag to differentiate between
+	// no binding and a binding of null value.
+	val_t *x = NULL;
+	bool found = false;
+	for (size_t i = 0; i < s->size; i++) {
+		if (!strcmp(n, s->names[i])) {
+			x = s->vals[i];
+			found = true;
+		}
+	}
+	*r = x;
+	return found;
 }
-
 
 //
 // Value queries
