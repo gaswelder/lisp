@@ -330,11 +330,13 @@ vm.val_t *fn_quote(vm.vm_t *inter, vm.val_t *args) {
 }
 
 vm.val_t *fn_car(vm.vm_t *inter, vm.val_t *args) {
-	return eval(inter, vm.car(args));
+	vm.val_t *list = eval(inter, vm.car(args));
+	return vm.car(list);
 }
 
 vm.val_t *fn_cdr(vm.vm_t *inter, vm.val_t *args) {
-	return eval(inter, vm.cdr(inter, args));
+	vm.val_t *list = eval(inter, vm.car(args));
+	return vm.cdr(inter, list);
 }
 
 vm.val_t *fn_globalset(vm.vm_t *inter, vm.val_t *args) {

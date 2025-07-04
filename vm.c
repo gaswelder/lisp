@@ -126,8 +126,8 @@ pub void popscope(vm_t *inter) {
 
 // Adds a binding to the current scope.
 pub void pushdef(vm_t *inter, const char *name, val_t *val) {
-	if (!name || !val) {
-		panic("name or val is NULL");
+	if (!name) {
+		panic("name is NULL");
 	}
 	scope_t *s = inter->stack[inter->depth-1];
 	if (s->size == TODOSIZE) {
