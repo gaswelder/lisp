@@ -187,13 +187,14 @@ vm.val_t *eval(vm.vm_t *inter, vm.val_t *x) {
 			vm.val_t *r = x;
 			vm.val_t *d = vm.lookup(inter, x->sym.name);
 			if (d) r = d;
-			trace_symbol_eval(inter, x, r);
+			trace_eval_result(inter, x, r);
 			return r;
 		}
 		case vm.LIST: {
-			trace_list_before(inter, x);
+			trace_msg_val(inter, "evaluating list: ", x);
+			trace_defs(inter);
 			vm.val_t *r = run_func(inter, vm.car(x), vm.cdr(inter, x));
-			trace_list_after(inter, r);
+			trace_eval_result(inter, x, r);
 			return r;
 		}
 		default: {
@@ -583,18 +584,19 @@ void trace_indent(size_t depth) {
 	for (size_t i = 0; i < depth; i++) printf("  ");
 }
 
-void trace_symbol_eval(vm.vm_t *inter, vm.val_t *x, *r) {
+void trace_eval_result(vm.vm_t *inter, vm.val_t *x, *r) {
 	if (!inter->trace) return;
+	char buf[100] = {};
+	vm.print(x, buf, sizeof(buf));
 	trace_indent(inter->depth);
-	printf("eval sym: %s = ", x->sym.name);
+	printf("%s -> ", buf);
 	vm.dbgprint(r);
 }
 
-void trace_list_before(vm.vm_t *inter, vm.val_t *x) {
+void trace_msg_val(vm.vm_t *inter, const char *msg, vm.val_t *x) {
 	if (!inter->trace) return;
-	trace_defs(inter);
 	trace_indent(inter->depth);
-	printf("eval: ");
+	printf("%s ", msg);
 	vm.dbgprint(x);
 }
 
@@ -605,8 +607,9 @@ void trace_run_func(vm.vm_t *inter, vm.val_t *fn) {
 	vm.dbgprint(fn);
 }
 
-void print_scope(vm.scope_t *s) {
+void print_scope(vm.scope_t *s, size_t indent) {
 	for (size_t i = 0; i < s->size; i++) {
+		trace_indent(indent);
 		printf("[%zu] %s = ", i, s->names[i]);
 		vm.dbgprint(s->vals[i]);
 	}
@@ -614,18 +617,14 @@ void print_scope(vm.scope_t *s) {
 }
 
 void trace_defs(vm.vm_t *inter) {
+	if (!inter->trace) return;
 	// -1 to exclude the first scope where built-in definitions are.
 	for (size_t d = 0; d < inter->depth - 1; d++) {
 		vm.scope_t *s = inter->stack[inter->depth - d - 1];
-		print_scope(s);
+		trace_indent(inter->depth);
+		printf("scope %zu:\n", inter->depth-d-1);
+		print_scope(s, inter->depth);
 	}
-}
-
-void trace_list_after(vm.vm_t *inter, vm.val_t *r) {
-	if (!inter->trace) return;
-	trace_indent(inter->depth);
-	printf("result: ");
-	vm.dbgprint(r);
 }
 
 bool islist(vm.val_t *x, const char *name) {
