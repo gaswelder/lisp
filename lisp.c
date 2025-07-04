@@ -17,5 +17,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	inter.tt_t *in = inter.new(400000);
-	return inter.repl(in, f);
+	int r = inter.repl(in, f);
+	inter.printstats(in);
+	return r;
 }

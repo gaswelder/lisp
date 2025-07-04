@@ -17,6 +17,8 @@ pub typedef {
 	val_t *poolitems;
 	size_t last_alloc;
 
+	size_t symbol_hits; // how many times a symbol was reused
+
     int created_at; // unix ms
 } vm_t;
 
@@ -226,6 +228,17 @@ pub val_t *slice(vm_t *inter, val_t *x, size_t start) {
 // Value constructors
 //
 
+val_t *reuse(vm_t *p, int type, const char *s) {
+	for (size_t i = 0; i < p->last_alloc; i++) {
+		val_t *x = &p->poolitems[i];
+		if (x->type == type && strcmp(s, x->sym.name) == 0) {
+			p->symbol_hits++;
+			return x;
+		}
+	}
+	return NULL;
+}
+
 pub val_t *newnumber(vm_t *p, const char *val) {
 	val_t *x = make(p);
 	x->type = NUMBER;
@@ -241,7 +254,9 @@ pub val_t *newlist(vm_t *p) {
 }
 
 pub val_t *newsym(vm_t *p, const char *s) {
-	val_t *x = make(p);
+	val_t *x = reuse(p, SYMBOL, s);
+	if (x != NULL) return x;
+	x = make(p);
 	x->type = SYMBOL;
 	strcpy(x->sym.name, s);
 	return x;

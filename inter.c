@@ -113,6 +113,11 @@ pub int repl(tt_t *t, FILE *f) {
 	return 0;
 }
 
+pub void printstats(tt_t *t) {
+	vm.vm_t *inter = t->vm;
+	fprintf(stderr, "# allocs: %zu, reuses: %zu\n", inter->last_alloc, inter->symbol_hits);
+}
+
 vm.val_t *vmevalstr(vm.vm_t *inter, const char *s) {
 	vm.val_t **all = vmread.readall(inter, s);
 	vm.val_t *r = NULL;
